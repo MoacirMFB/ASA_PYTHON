@@ -1,5 +1,73 @@
 classdef CR3BPLibrary
-    % Class for applied control astronautics functions and methods
+    % CR3BPLIBRARY  Applied astrodynamics & control utilities for CR3BP work.
+    %
+    %   Toolbox-style class focused on Circular Restricted Three-Body Problem
+    %   (CR3BP) modeling, estimation, targeting, continuation, and plotting.
+    %   Provides high-level routines for trajectory design around libration
+    %   regions (e.g., halo/lyapunov families) and transfer construction.
+    %
+    % FEATURES
+    %   • Dynamics
+    %       - dynamicsCR3BP: 6-state synodic-frame equations of motion
+    %       - augmentedDynamicsCR3BP: state + STM propagation (6 + 36)
+    %   • Integrators
+    %       - integrateCR3BP: plain state propagation (ode45 wrapper)
+    %       - stateWithCovariancedDynamics / integrateCR3BPwithCovariance:
+    %         EKF-style covariance propagation (Pdot = A P + P A' + G Qs G')
+    %   • Plotters
+    %       - plotCR3BPOrbit: single/multi-IC propagation or state-history
+    %         plotting; optional JC/period colormaps, textured primaries,
+    %         arrows, legends, dark mode
+    %   • Targeters (single-case differential correction)
+    %       - finalStateTargeter_StopAtXf: match [y z vx vy vz] at x = x_f
+    %       - finalPositionTargeter_StopAtXf: match [y z] at x = x_f
+    %       - targeterPerpendicularXZ_FixedX / _FixedZ / _FixedVy:
+    %         enforce perpendicular crossing of xz-plane (y=0, v_x=v_z=0)
+    %   • Continuation (families of periodic orbits)
+    %       - findPerpendicularXZPeriodicOrbits_FixedX
+    %       - findPerpendicularXZPeriodicOrbits_FixedZ
+    %       - findPerpendicularXZPeriodicOrbits_FixedVy
+    %   • State extraction
+    %       - getStateAtTau: interpolate states at fractional period marks
+    %   • Initial-guess helpers
+    %       - estimateDeltaV0_LPOtoMoon: ΔV magnitude/direction via
+    %         pseudo-potential / JC heuristics
+    %   • Converters (frames & coordinates)
+    %       - sunToMoonSynodic: Sun→Moon vectors in synodic & inertial frames
+    %       - bci_to_syn: body-centered inertial → synodic (pos/vel[,period])
+    %
+    % UNITS & FRAMES
+    %   • Default CR3BP normalization: n = 1, distances nondimensionalized
+    %     by primary separation; time by 1/n; velocities by (distance/time).
+    %   • Some helpers accept/return dimensional data when documented; keep
+    %     consistency across a workflow.
+    %   • Frames: Synodic (rotating barycentric), BCI (body-centered inertial),
+    %     and Sun-centered inertial where noted.
+    %
+    % DEPENDENCIES
+    %   KeplerianOrbitalMechanicsLibrary   – general two-body utilities
+    %   AttitudeDeterminationLibrary       – DCM/quaternion utilities (used in converters)
+    %
+    % EXAMPLES
+    %   cr = CR3BPLibrary();
+    %   x0 = [1.02 0 0 0 0.15 0]; tspan = [0 3.2];
+    %   [T,Y] = cr.integrateCR3BP(x0, 0.01215058, 1, tspan, odeset('RelTol',1e-12,'AbsTol',1e-12));
+    %   f = cr.plotCR3BPOrbit([x0 3.2], zeros(5,2), 0.01215058, 1, odeset, 0, 'plotTitle',"CR3BP Demo");
+    %
+    % NOTES
+    %   - Differential correctors assume smooth crossings/events and may
+    %     require good initial guesses; check exit flags and iteration logs.
+    %   - Continuation routines append results and report success/failure per
+    %     step; verify families before downstream use.
+    %   - Covariance propagation uses user-supplied Qs and G; ensure proper
+    %     scaling in normalized units.
+    %
+    % AUTHOR
+    %   Moacir Fonseca Becker
+    %   Purdue University
+    %
+    % LAST MODIFIED
+    %   08/13/2025
     
 
     properties (Access = private)

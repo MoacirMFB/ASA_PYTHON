@@ -1,5 +1,27 @@
 classdef PlotterLibrary
-    % Class for creating plots in general
+    % PLOTTERLIBRARY  Plotting & visualization utilities for MORPHO studies.
+    %
+    %   Provides figure helpers and high-level plotters to visualize
+    %   asteroid-interception analyses and attitude motion. Includes:
+    %     • 2BP trajectory plotting (static or animated, follow-cam)
+    %     • MP4 movie export with frame skipping and fixed window size
+    %     • Dark-mode styling, start/end markers, top-down orthographic views
+    %     • Rotating 3D box visualization from quaternion history
+    %     • Illuminated ellipsoid bodies with texture/terminator shading
+    %
+    % AUTHOR
+    %   Moacir Fonseca Becker
+    %   Purdue University
+    %
+    % LAST MODIFIED
+    %   10/26/2025
+    %
+    % NOTES
+    %   - Units follow [km, km/s, s] for orbital plots (labels reflect units).    
+    %   - Depends on KeplerianOrbitalMechanicsLibrary for 2BP dynamics.
+    %   - Attitude visualizations expect an AttitudeDeterminationLibrary
+    %     (for quaternion↔DCM conversions).
+    %   - Recommended MATLAB: R2021b+ for VideoWriter performance.
 
     properties (Access = private)
         orb   KeplerianOrbitalMechanicsLibrary
