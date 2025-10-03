@@ -1442,6 +1442,68 @@ classdef KeplerianOrbitalMechanicsLibrary
         x_dot = [vx; vy; vz; ax; ay; az];
     end
 
+   
+    %% ====== 2BP Jacobian (Cartesian, no perturbations) ======
+    function A = jacobian_2BP_cartesian(obj, t, X, mu)
+        % JACOBIAN_2BP_CARTESIAN  Returns the state Jacobian ∂f/∂X for the
+        % unperturbed 2-body problem in Cartesian coordinates.
+        %
+        % Usage:
+        %   A = jacobian_2BP_cartesian(t, X, mu)
+        %
+        % INPUTS:
+        %   t   - Time [s] (unused; included for ODE/STM interface compatibility)
+        %   X   - State vector [6x1]: [x; y; z; vx; vy; vz] (km, km/s)
+        %   mu  - Gravitational parameter [km^3/s^2]
+        %
+        % OUTPUT:
+        %   A   - Jacobian matrix ∂f/∂X evaluated at (t, X) [6x6]
+        %
+        % Dynamics recap:
+        %   f(X) = [ v ;
+        %            -mu * r / ||r||^3 ]
+        %   with r = [x; y; z], v = [vx; vy; vz]
+        %
+        %   ∂f/∂X =
+        %     [ 0_3   I_3 ;
+        %       ∂a/∂r 0_3 ]
+        %
+        %   where  ∂a/∂r = μ * ( 3*r*rᵀ/||r||^5 - I_3/||r||^3 )
+
+        % 't' is unused by design
+
+        % Extract position
+        x = X(1); y = X(2); z = X(3);
+
+        % Distance and powers
+        r2 = x*x + y*y + z*z;
+        r  = sqrt(r2);
+
+        % Protect against singularity at r ≈ 0
+        if r < 1e-12
+            error('jacobian_2BP_cartesian: singular state (||r|| ≈ 0).');
+        end
+
+        r3 = r2 * r;
+        r5 = r2 * r3;
+
+        % 3x3 block: ∂a/∂r = μ * (3 rrᵀ / r^5 - I / r^3)        
+        % Build rrᵀ explicitly
+        rrT = [x*x, x*y, x*z;
+            y*x, y*y, y*z;
+            z*x, z*y, z*z];
+
+        I3   = eye(3);
+        dadr = mu * ( 3.0 * rrT / r5 - I3 / r3 );
+
+        % Assemble full 6x6 Jacobian
+        A = zeros(6,6);
+        A(1:3,4:6) = I3;      % ∂(ṙ)/∂v = I
+        A(4:6,1:3) = dadr;    % ∂(v̇)/∂r
+        % ∂(ṙ)/∂r = 0, ∂(v̇)/∂v = 0 already
+
+    end
+
 
 %% ====== 2BP Propagators With Perturbation ======
 

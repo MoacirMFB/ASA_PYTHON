@@ -205,23 +205,23 @@ classdef InterceptionLibrary
 
             States_MBI_Earth_Ast = cell(1, numel(ast));
             for k = 1:numel(ast)
-                [~, MOID_pre]      = obj.get_CA_MOID(env.X_Earth_hist, ast{k}.X_hist, env.t_Earth, ast{k}.t_hist);
-                ast{k}.MOID_pre_km = MOID_pre.d_km;
-                ast{k}.CA_pre_km   = MOID_pre.d_km;
+                [~, stateMOID_nom] = obj.get_CA_MOID(env.X_Earth_hist, ast{k}.X_hist, env.t_Earth, ast{k}.t_hist);
+                ast{k}.MOID_pre_km = stateMOID_nom.d_km;
+                ast{k}.CA_pre_km   = stateMOID_nom.d_km;
 
                 if forceImpact
-                    MOID_hit = MOID_pre;
-                    MOID_hit.stateAst(1:3) = MOID_hit.stateEarth(1:3);
+                    stateMOID_forced = stateMOID_nom;
+                    stateMOID_forced.stateAst(1:3) = stateMOID_forced.stateEarth(1:3);
                     ast{k}.MOID_pre_km = 0;
                     ast{k}.CA_pre_km   = 0;
                     ast{k}.name = string(ast{k}.name);
                     ast{k}.name = ast{k}.name + "-forced";
-                    MOID_use = MOID_hit;
+                    stateAtMOID = stateMOID_forced;
                 else
-                    MOID_use = MOID_pre;
+                    stateAtMOID = stateMOID_nom;
                 end
 
-                States_MBI_Earth_Ast{k} = obj.getStatesAtMBI(MOID_use, monthsBack);
+                States_MBI_Earth_Ast{k} = obj.getStatesAtMBI(stateAtMOID, monthsBack);
             end
         end
 
@@ -229,7 +229,7 @@ classdef InterceptionLibrary
 
 
         %%  --- TYPE 1 ANALYSIS: Single Transfer Performance ---
-        function [perf, XE_post, XA_post] = computeSingleCasePerformance(obj, bodies, best, depMBI, intMBI, TOF_sec, asteroids, kAst, odeOpt)
+        function [perf, XE_post, XA_post] = computeSingleCasePerformance(obj, bodies, best, depMBI, arrMBI, TOF_sec, asteroids, kAst, odeOpt)
             % computeSingleCasePerformance  Single-case metrics + post-intercept ΔMOID/ΔCA.
             %
             %   perf = computeSingleCasePerformance(bodies, best, depMBI, intMBI, TOF_sec, asteroids, kAst)
@@ -240,14 +240,14 @@ classdef InterceptionLibrary
             %              .t_hist [N×1] (s), .X_hist [N×6] (km, km/s)
             %   best       Lambert result with fields: .dV [km/s], .VF [3×1 km/s]
             %   depMBI     departure lead time (months-before-impact)
-            %   intMBI     interception lead time (months-before-impact)
+            %   arrMBI     interception lead time (months-before-impact)
             %   TOF_sec    launch→intercept time of flight [s]
             %   asteroids  cell; asteroids{kAst}.coe(1)=a_AU, .MOID_pre_km, .CA_pre_km
             %   kAst       index into asteroids for the current target
             %   odeOpt     (optional) odeset; defaults RelTol=AbsTol=1e-13
             %
             % Output (perf struct)
-            %   DVlaunch      [km/s]
+            %   Vinf          [km/s]
             %   DVint         [km/s]
             %   theta         [deg]
             %   R1            [-]        (= TOF / TLI)
@@ -263,7 +263,7 @@ classdef InterceptionLibrary
             end
 
             % ---------------- core kinematics (ΔVlaunch, ΔVint, θ, R1) ------------
-            perf.DVlaunch = best.dV;
+            perf.Vinf = best.dV;
 
             idxInt  = find(bodies{2}.t_hist >= TOF_sec, 1, 'first');   % asteroid(pre) @ impact
             vAstInt = bodies{2}.X_hist(idxInt,4:6).';                  % km/s
@@ -272,7 +272,7 @@ classdef InterceptionLibrary
             perf.theta = real(acosd( dot(best.VF,vAstInt) / (norm(best.VF)*norm(vAstInt)) ));
 
             TLI_s   = depMBI          *30*86400;                       % launch→impact
-            TOF_s   = (depMBI-intMBI) *30*86400;                       % launch→intercept
+            TOF_s   = (depMBI-arrMBI) *30*86400;                       % launch→intercept
             perf.R1 = TOF_s / TLI_s;
 
             % ---------------- ΔMOID / ΔCA (post-intercept) ------------------------
@@ -998,24 +998,12 @@ classdef InterceptionLibrary
         end
 
 
-        function bodies = plot_2BP_trajectories(obj,varargin)
-            % Original implementation (unchanged) now accessed via OBJ.*
-            bodies = obj.internal_plot_2BP_trajectories(varargin{:});
-        end
-
 
         %% --- TYPE 1 ANALYSIS HELPERS ---
 
         function bodies = addPostInterceptAsteroid(obj, bodies, cfg)
             % ADDPOSTINTERCEPTASTEROID  Apply momentum transfer and append
             % a post-impact asteroid to the bodies struct.
-            %
-            %   bodies = obj.addPostInterceptAsteroid(bodies, cfg)
-            %
-            % PURPOSE
-            %   Models a kinetic impact: applies ΔV to the asteroid at intercept,
-            %   propagates its post-interception trajectory, appends it to BODIES, and blanks
-            %   the interceptor's path beyond the impact epoch.
             %
             % REQUIRED cfg fields
             %   astFC [1×6]   asteroid state at intercept [km, km/s]
@@ -1025,86 +1013,116 @@ classdef InterceptionLibrary
             %   beta          momentum enhancement factor [–]
             %   tspan [1×N]   global time grid [s]
             %   step_s        integration step [s]
-            %
             % OPTIONAL cfg fields
             %   odeOpt        ODE options (odeset)
             %   kAst, asteroids  for naming the new body
-            %
-            % OUTPUT
-            %   bodies        updated cell array with new '<name> (post-intercept)' body
-            %                 and interceptor trajectory blanked after impact.
-
+            %   post_tail_sec    extra time to propagate beyond leg grid [s] (default 0)
 
             % ---- unpack / defaults
-            ri_imp = cfg.astFC(1:3).';  ri_imp = ri_imp(:);             % km
+            ri_imp = cfg.astFC(1:3).';  ri_imp = ri_imp(:);          % km
+            vAst   = cfg.astFC(4:6).';  vAst   = vAst(:);            % km/s
 
-            vAst = cfg.astFC(4:6).'; vAst = vAst(:);                 % km/s
-
-            VFcol = cfg.bestVF(:);                                       % km/s
-            tspan = cfg.tspan(:).';                                      % s (row)
-            TOF   = cfg.TOF_sec;
+            VFcol  = cfg.bestVF(:);                                  % km/s
+            tspan  = cfg.tspan(:).';                                 % s (row)
+            TOF    = cfg.TOF_sec;
             if ~isfield(cfg,'odeOpt') || isempty(cfg.odeOpt)
                 cfg.odeOpt = odeset('RelTol',1e-13,'AbsTol',1e-13);
             end
+            if ~isfield(cfg,'post_tail_sec') || isempty(cfg.post_tail_sec)
+                cfg.post_tail_sec = 0;                               % no tail by default
+            end
 
             % ---- asteroid ΔV (km/s)
-            U_mps  = (VFcol - vAst) * 1e3;                               % m/s
+            U_mps  = (VFcol - vAst) * 1e3;                           % m/s
             Uhat   = U_mps ./ max(norm(U_mps), eps);
             dV_kms = obj.computeAsteroidDeltaV(cfg.m_sc, cfg.M_ast, U_mps, Uhat, cfg.beta) / 1e3;
 
             % ---- post-impact IC
-            vPost     = vAst + dV_kms;                                   % km/s
-            Xpost_col = [ri_imp ; vPost];                                % 6x1
-            Xpost_row = Xpost_col.';                                     % 1x6
+            vPost     = vAst + dV_kms;                               % km/s
+            Xpost_col = [ri_imp ; vPost];                            % 6×1
 
-            % ---- propagate AFTER impact on the global grid
-            Xhist = build_postimpact_history(Xpost_col, tspan, TOF, cfg.step_s, cfg.odeOpt);
+            % ---- propagate AFTER impact on the global grid (+ optional tail)
+            [t_hist_post, Xhist] = build_postimpact_history( ...
+                Xpost_col, tspan, TOF, cfg.step_s, cfg.odeOpt, obj.MU_SUN_KM, cfg.post_tail_sec);
 
-            % ---- append new body (name extraction)
-            nameBase = "Asteroid";
-
-            if isfield(cfg,'asteroids') && ~isempty(cfg.asteroids) && isfield(cfg,'kAst')
+            % ---- name for new body (fallbacks)
+            astName = "Asteroid";
+            if numel(bodies) >= 2 && isfield(bodies{2},'name') && ~isempty(bodies{2}.name)
+                astName = string(bodies{2}.name);
+            elseif isfield(cfg,'asteroids') && ~isempty(cfg.asteroids) && isfield(cfg,'kAst')
                 try
                     if iscell(cfg.asteroids)
-                        nameBase = string(cfg.asteroids{cfg.kAst}.name);
+                        astName = string(cfg.asteroids{cfg.kAst}.name);
                     elseif isstruct(cfg.asteroids)
-                        nameBase = string(cfg.asteroids(cfg.kAst).name);
+                        astName = string(cfg.asteroids(cfg.kAst).name);
                     else
-                        nameBase = string(cfg.asteroids);
+                        astName = string(cfg.asteroids);
                     end
                 catch
-                    % leave default
+                    % keep default
                 end
             end
-            namePost = sprintf('%s (post-intercept)', nameBase);
-            bodyPost = struct('name', namePost, 'IC', Xpost_row, 'tspan', tspan, ...
-                't_hist', tspan(:), 'X_hist', Xhist);
-            bodies{end+1} = bodyPost;
+
+            % ---- append new post-impact asteroid body
+            postBody.name   = sprintf('%s (post-intercept)', astName);
+            postBody.IC     = Xpost_col.';            % 1×6 row
+            postBody.tspan  = t_hist_post.';          % row
+            postBody.t_hist = t_hist_post;            % column
+            postBody.X_hist = Xhist;                  % N×6 (NaNs before TOF; tail appended)
+            bodies{end+1}   = postBody;
 
             % ---- hide interceptor after impact (convention: index 3)
             bodies = blank_interceptor_after_hit(bodies, TOF);
 
             % ====================== nested helpers ======================
-            function XhistLoc = build_postimpact_history(Xpost0, tspanAll, TOFsec, step_s, odeOpt)
-                % Integrate only for t ≥ TOFsec, stitch into [N×6] with NaNs before impact.
+            function [t_histLoc, XhistLoc] = build_postimpact_history( ...
+                    Xpost0, tspanAll, TOFsec, step_s, odeOpt, mu_central, tail_sec)
+                % Fill rows aligned with the leg grid for t >= TOFsec
+                % Then append an extra "tail" of length tail_sec beyond the leg grid
+
+                if nargin < 7 || isempty(tail_sec), tail_sec = 0; end
+
                 nFrames = numel(tspanAll);
                 idx0    = find(tspanAll >= TOFsec, 1, 'first');
-                Tremain = tspanAll(end) - TOFsec;
+                if isempty(idx0), idx0 = nFrames + 1; end
 
-                if Tremain < step_s
-                    t_rel = [0, step_s];
+                Tremain = max(0, tspanAll(end) - TOFsec);
+
+                % relative times on the leg grid (from TOF to leg end)
+                if Tremain > 1e-9
+                    t_rel_leg = 0:step_s:Tremain;
+                    if t_rel_leg(end) < Tremain, t_rel_leg(end+1) = Tremain; end
                 else
-                    t_rel = 0:step_s:Tremain;
-                    if t_rel(end) < Tremain, t_rel(end+1) = Tremain; end
+                    t_rel_leg = 0;
                 end
 
-                % Use the class's orbital model & μ
-                [~, Xrel] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), ...
-                    t_rel, Xpost0, odeOpt);
+                % extension beyond the leg grid
+                if tail_sec > 1e-9
+                    t_rel_tail = t_rel_leg(end) + (step_s:step_s:tail_sec);
+                else
+                    t_rel_tail = [];
+                end
 
-                XhistLoc                  = nan(nFrames,6);
-                lastIdx                   = min(idx0 + size(Xrel,1) - 1, nFrames);
-                XhistLoc(idx0:lastIdx,:)  = Xrel(1:(lastIdx-idx0+1),:);
+                t_rel = [t_rel_leg(:); t_rel_tail(:)];
+
+                % integrate from the post-impact IC
+                [~, Xrel] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,mu_central), ...
+                    t_rel, Xpost0(:), odeOpt);
+
+                % allocate for the leg grid, fill only t >= TOF
+                XhistLoc = nan(nFrames,6);
+                if ~isempty(t_rel_leg)
+                    lastIdx = min(idx0 + numel(t_rel_leg) - 1, nFrames);
+                    XhistLoc(idx0:lastIdx,:) = Xrel(1:(lastIdx-idx0+1), :);
+                end
+
+                % append tail beyond the leg grid
+                if ~isempty(t_rel_tail)
+                    XhistLoc = [XhistLoc; Xrel(numel(t_rel_leg)+1:end,:)];
+                    tspanAll = [tspanAll(:); tspanAll(end) + t_rel_tail(:)];
+                end
+
+                t_histLoc = tspanAll(:);
             end
 
             function bodiesOut = blank_interceptor_after_hit(bodiesIn, TOFsec)
@@ -1117,7 +1135,170 @@ classdef InterceptionLibrary
                     end
                 end
             end
+
+            function y = iff(c,a,b), if c, y=a; else, y=b; end
+            end
         end
+
+
+        % function bodies = addPostInterceptAsteroid(obj, bodies, cfg)
+        %     % ADDPOSTINTERCEPTASTEROID  Apply momentum transfer and append
+        %     % a post-impact asteroid to the bodies struct.
+        %     %
+        %     %   bodies = obj.addPostInterceptAsteroid(bodies, cfg)
+        %     %
+        %     % PURPOSE
+        %     %   Models a kinetic impact: applies ΔV to the asteroid at intercept,
+        %     %   propagates its post-interception trajectory, appends it to BODIES, and blanks
+        %     %   the interceptor's path beyond the impact epoch.
+        %     %
+        %     % REQUIRED cfg fields
+        %     %   astFC [1×6]   asteroid state at intercept [km, km/s]
+        %     %   bestVF [3×1]  interceptor velocity at intercept [km/s]
+        %     %   TOF_sec       intercept epoch [s]
+        %     %   m_sc, M_ast   spacecraft and asteroid mass [kg]
+        %     %   beta          momentum enhancement factor [–]
+        %     %   tspan [1×N]   global time grid [s]
+        %     %   step_s        integration step [s]
+        %     %
+        %     % OPTIONAL cfg fields
+        %     %   odeOpt        ODE options (odeset)
+        %     %   kAst, asteroids  for naming the new body
+        %     %
+        %     % OUTPUT
+        %     %   bodies        updated cell array with new '<name> (post-intercept)' body
+        %     %                 and interceptor trajectory blanked after impact.
+        % 
+        % 
+        %     % ---- unpack / defaults
+        %     ri_imp = cfg.astFC(1:3).';  ri_imp = ri_imp(:);             % km
+        % 
+        %     vAst = cfg.astFC(4:6).'; vAst = vAst(:);                 % km/s
+        % 
+        %     VFcol = cfg.bestVF(:);                                       % km/s
+        %     tspan = cfg.tspan(:).';                                      % s (row)
+        %     TOF   = cfg.TOF_sec;
+        %     if ~isfield(cfg,'odeOpt') || isempty(cfg.odeOpt)
+        %         cfg.odeOpt = odeset('RelTol',1e-13,'AbsTol',1e-13);
+        %     end
+        % 
+        %     % ---- asteroid ΔV (km/s)
+        %     U_mps  = (VFcol - vAst) * 1e3;                               % m/s
+        %     Uhat   = U_mps ./ max(norm(U_mps), eps);
+        %     dV_kms = obj.computeAsteroidDeltaV(cfg.m_sc, cfg.M_ast, U_mps, Uhat, cfg.beta) / 1e3;
+        % 
+        %     % ---- post-impact IC
+        %     vPost     = vAst + dV_kms;                                   % km/s
+        %     Xpost_col = [ri_imp ; vPost];                                % 6x1
+        %     Xpost_row = Xpost_col.';                                     % 1x6
+        % 
+        %     % ---- propagate AFTER impact on the global grid
+        %     [~, Xhist] = build_postimpact_history( ...
+        %         Xpost_col, cfg.tspan, cfg.TOF_sec, cfg.step_s, cfg.odeOpt, obj.MU_SUN_KM, ...
+        %         iff(isfield(cfg,'post_tail_sec') && ~isempty(cfg.post_tail_sec), cfg.post_tail_sec, 0));
+        % 
+        % 
+        %     % ---- append new body (name extraction)
+        %     nameBase = "Asteroid";
+        % 
+        %     if isfield(cfg,'asteroids') && ~isempty(cfg.asteroids) && isfield(cfg,'kAst')
+        %         try
+        %             if iscell(cfg.asteroids)
+        %                 nameBase = string(cfg.asteroids{cfg.kAst}.name);
+        %             elseif isstruct(cfg.asteroids)
+        %                 nameBase = string(cfg.asteroids(cfg.kAst).name);
+        %             else
+        %                 nameBase = string(cfg.asteroids);
+        %             end
+        %         catch
+        %             % leave default
+        %         end
+        %     end
+        % 
+        %     astName = bodies{2}.name;
+        %     postBody.name  = sprintf('%s (post-intercept)', astName);
+        %     postBody.IC    = Xpost_col.';       % row
+        %     postBody.tspan = t_hist_post.';      % keep for completeness
+        %     postBody.t_hist= t_hist_post;        % column
+        %     postBody.X_hist= Xhist;
+        %     bodies{end+1}  = postBody;
+        %     bodies{end+1} = bodyPost;
+        % 
+        %     % ---- hide interceptor after impact (convention: index 3)
+        %     bodies = blank_interceptor_after_hit(bodies, TOF);
+        % 
+        %     % ====================== nested helpers ======================
+        %     function [t_histLoc, XhistLoc] = build_postimpact_history( ...
+        %             Xpost0, tspanAll, TOFsec, step_s, odeOpt, mu_central, tail_sec)
+        %         % Build post-impact history:
+        %         % • Fill the rows aligned with the leg grid for t >= TOFsec
+        %         % • Then append an extra "tail" of length tail_sec beyond the leg grid
+        % 
+        %         if nargin < 7 || isempty(tail_sec), tail_sec = 0; end
+        % 
+        %         nFrames = numel(tspanAll);
+        %         idx0    = find(tspanAll >= TOFsec, 1, 'first');
+        %         if isempty(idx0), idx0 = nFrames + 1; end
+        % 
+        %         Tremain = max(0, tspanAll(end) - TOFsec);
+        % 
+        %         % relative times on the leg grid (from TOF to leg end)
+        %         if Tremain > 1e-9
+        %             t_rel_leg = 0:step_s:Tremain;
+        %             if t_rel_leg(end) < Tremain, t_rel_leg(end+1) = Tremain; end
+        %         else
+        %             t_rel_leg = 0;
+        %         end
+        % 
+        %         % extension beyond the leg grid
+        %         if tail_sec > 1e-9
+        %             t_rel_tail = t_rel_leg(end) + (step_s:step_s:tail_sec);
+        %         else
+        %             t_rel_tail = [];
+        %         end
+        % 
+        %         t_rel = [t_rel_leg(:); t_rel_tail(:)];
+        % 
+        %         % integrate from the post-impact IC
+        %         [~, Xrel] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,mu_central), ...
+        %             t_rel, Xpost0(:), odeOpt);
+        % 
+        %         % allocate for the leg grid, fill only t >= TOF
+        %         XhistLoc = nan(nFrames,6);
+        %         if ~isempty(t_rel_leg)
+        %             lastIdx = min(idx0 + numel(t_rel_leg) - 1, nFrames);
+        %             XhistLoc(idx0:lastIdx,:) = Xrel(1:(lastIdx-idx0+1), :);
+        %         end
+        % 
+        %         % append tail beyond the leg grid
+        %         if ~isempty(t_rel_tail)
+        %             XhistLoc = [XhistLoc; Xrel(numel(t_rel_leg)+1:end,:)];
+        %             tspanAll = [tspanAll(:); tspanAll(end) + t_rel_tail(:)];
+        %         end
+        % 
+        %         t_histLoc = tspanAll(:);
+        %     end
+        % 
+        % 
+        %     function bodiesOut = blank_interceptor_after_hit(bodiesIn, TOFsec)
+        %         bodiesOut = bodiesIn;
+        %         iInt = min(3, numel(bodiesOut)); % guard
+        %         if iInt>=1 && iInt<=numel(bodiesOut) && isfield(bodiesOut{iInt},'t_hist')
+        %             idxInt = find(bodiesOut{iInt}.t_hist >= TOFsec, 1, 'first');
+        %             if ~isempty(idxInt)
+        %                 bodiesOut{iInt}.X_hist(idxInt:end,:) = nan;
+        %             end
+        %         end
+        %     end
+        % 
+        %     function y = iff(c,a,b), if c, y=a; else, y=b; end
+        %     end
+        % 
+        % end
+        % 
+        % 
+
+
 
         function TOF = computeTOF(obj, t0_MBI, tf_MBI)
             % COMPUTETOF  Convert a pair of MBI values to time-of-flight fields.
@@ -1132,6 +1313,10 @@ classdef InterceptionLibrary
             TOF.days   = TOF.months * 30;
             TOF.sec    = TOF.days   * 86400;
         end
+
+
+
+
 
         function s = pickScaleUp(obj, cfg, a_AU, t0_MBI, tf_MBI)
             % PICKSCALEUP  Decide how much to extend the propagation window.
@@ -1192,10 +1377,10 @@ classdef InterceptionLibrary
             %   s = obj.makeMetricsTitle(perf, cfg, M_ast_ton, t0_MBI, tf_MBI)
             s = sprintf(['\nAst Mass = %.1f tons \nSC Mass = %.1f tons \n' ...
                 'Interception at %.1f MBI \nLaunch at %.1f MBI \n' ...
-                '|ΔV_{launch}| = %.2f km/s \n|ΔV_{inter}| = %.2f km/s \n' ...
+                '|V_{inf}| = %.2f km/s \n|ΔV_{inter}| = %.2f km/s \n' ...
                 'θ_{int} = %.1f°\n\\beta = %.1f'], ...
                 M_ast_ton, cfg.m_sc/1e3, tf_MBI, t0_MBI, ...
-                perf.DVlaunch, perf.DVint, perf.theta, cfg.beta);
+                perf.Vinf, perf.DVint, perf.theta, cfg.beta);
         end
 
         function printPerfDelta(obj, perf, ast)
@@ -1332,13 +1517,5 @@ classdef InterceptionLibrary
     end
 
 
-
-
-
-    %% --- Other Methods ---
-    methods (Access = private)
-        bodies = internal_plot_2BP_trajectories(obj,bodies,central,mu_central,animate,varargin);
-        out = iff(~,cond,a,b);
-    end
 
 end

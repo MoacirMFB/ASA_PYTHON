@@ -148,7 +148,7 @@ methods
         
             % CR3BP Differential Equations
             dxdt = vx;
-            dydt = vy;
+            dydt = vy;  
             dzdt = vz;
             dvxdt = 2*n*vy + n^2*x - (1 - mu)*(x + mu)/d^3 - mu*(x - 1 + mu)/r^3;
             dvydt = -2*n*vx + n^2*y - (1 - mu)*y/d^3 - mu*y/r^3; % Corrected terms
@@ -207,10 +207,8 @@ methods
                dXaug_dt = [dState_dt; dPhi_dt_vec];    % Return the augmented state vector derivative
         end 
 
-    %% .
-    %% .
-    %% .
-    %% 3.2) Integrators
+        %% ===============================================================
+        %% 3.2) Integrators
         
         % Integrate CR3BP
         function [T, Y] = integrateCR3BP(obj,x0, mu, n, tSpan, optionsODE)
@@ -332,10 +330,9 @@ methods
             % Call ode45 with the dynamics function and other arguments
             [T, Y] = ode45(dynamicsFunc, tspan, X0, optionsODE);
         end
-    %% .
-    %% .
-    %% .
-    %% 3.3) Plotters    
+
+        %% ===============================================================
+        %% 3.3) Plotters
         % Single or Multiple ICs (CR3BP)
         function f = plotCR3BPOrbit(obj,ICs, Lpoints, mu, n, optionsODE, Flag, varargin)
             % plotCR3BPOrbit Plots the trajectory for the Circular
@@ -343,312 +340,312 @@ methods
             % conditions or precomputed states, marks the libration points,
             % and optionally colors the orbits based on their Jacobi
             % constant values or provided color.
-                %  Last Update: 17-04-2024
-                % Usage:
-                %   f = obj.plotCR3BPOrbit(ICs, Lpoints, mu, n, optionsODE,
-                %   Flag, varargin)
-                %
-                % Inputs:
-                %   ICs - An initial state vector (col or row) of 7
-                %   elements or a matrix where each row contains the state
-                %   vector and final time for a particular orbit, or
-                %   precomputed states for direct plotting. Lpoints - A 5x2
-                %   matrix containing the x and y coordinates of the five
-                %   libration points, L1 through L5. A row should be set to
-                %   [0, 0] if a particular libration point is not to be
-                %   plotted. mu - Gravitational parameter for the CR3BP,
-                %   representing the mass ratio of the two primary bodies.
-                %   n - Mean motion (average angular velocity) in the CR3BP
-                %   system, typically set to 1 for normalized units.
-                %   optionsODE - MATLAB ODE solver options structure,
-                %   typically created with odeset. Flag - A boolean flag
-                %   indicating whether to color the orbits based on their
-                %   Jacobi Constant (JC) or period values. If 1 JC, if 2
-                %   period values. varargin - Additional optional
-                %   parameters
-                %
-                % Plots CR3BP trajectories from either ICs (propagated on-the-fly) or
-                % pre-computed state histories. Supports colouring by Jacobi constant
-                % (Flag==1) or orbital period (Flag==2). For Flag==0, the routine leaves
-                % any existing colourbar untouched and does not create a new one.
-                %---------------------------------------------------------------------
-                % LAST UPDATE: 08-Jul-2025 – added smart colourbar handling & robust axes
-                %---------------------------------------------------------------------
-                % OPTIONAL NAME-VALUE PAIRS
-                %   'plotTitle'             – custom title (default "CR3BP Propagation")
-                %   'figureHandle'          – plot into existing figure
-                %   'arrows'                – true/false, draw velocity arrows
-                %   'blackBackground'       – black theme
-                %   'plotRealisticPrimaries'– textured Earth/Moon
-                %   'showLegends'           – toggle legend
-                %   'states'                – if true, ICs is a state history
-                %---------------------------------------------------------------------
+            %  Last Update: 17-04-2024
+            % Usage:
+            %   f = obj.plotCR3BPOrbit(ICs, Lpoints, mu, n, optionsODE,
+            %   Flag, varargin)
+            %
+            % Inputs:
+            %   ICs - An initial state vector (col or row) of 7
+            %   elements or a matrix where each row contains the state
+            %   vector and final time for a particular orbit, or
+            %   precomputed states for direct plotting. Lpoints - A 5x2
+            %   matrix containing the x and y coordinates of the five
+            %   libration points, L1 through L5. A row should be set to
+            %   [0, 0] if a particular libration point is not to be
+            %   plotted. mu - Gravitational parameter for the CR3BP,
+            %   representing the mass ratio of the two primary bodies.
+            %   n - Mean motion (average angular velocity) in the CR3BP
+            %   system, typically set to 1 for normalized units.
+            %   optionsODE - MATLAB ODE solver options structure,
+            %   typically created with odeset. Flag - A boolean flag
+            %   indicating whether to color the orbits based on their
+            %   Jacobi Constant (JC) or period values. If 1 JC, if 2
+            %   period values. varargin - Additional optional
+            %   parameters
+            %
+            % Plots CR3BP trajectories from either ICs (propagated on-the-fly) or
+            % pre-computed state histories. Supports colouring by Jacobi constant
+            % (Flag==1) or orbital period (Flag==2). For Flag==0, the routine leaves
+            % any existing colourbar untouched and does not create a new one.
+            %---------------------------------------------------------------------
+            % LAST UPDATE: 08-Jul-2025 – added smart colourbar handling & robust axes
+            %---------------------------------------------------------------------
+            % OPTIONAL NAME-VALUE PAIRS
+            %   'plotTitle'             – custom title (default "CR3BP Propagation")
+            %   'figureHandle'          – plot into existing figure
+            %   'arrows'                – true/false, draw velocity arrows
+            %   'blackBackground'       – black theme
+            %   'plotRealisticPrimaries'– textured Earth/Moon
+            %   'showLegends'           – toggle legend
+            %   'states'                – if true, ICs is a state history
+            %---------------------------------------------------------------------
 
-                % Create an input parser
-                p = inputParser;
-            
-                % Define default values
-                defaultArrows = false;
-                defaultFigHandle = [];
-                defaultColor = 'b';  
-                defaultLineWidth = 2;  
-                blackBackground = false;  
-                defaultPlotRealisticPrimaries = true; 
-                defaultShowLegends = true;             % Default to true
-                defaultPlotTitle = 'CR3BP Propagation'; % NEW default title
+            % Create an input parser
+            p = inputParser;
 
-                
-                % Add parameters to input parser
-                addParameter(p, 'arrows', defaultArrows, @islogical);
-                addParameter(p, 'figureHandle', defaultFigHandle, @(x) isempty(x) || (ishandle(x) && strcmp(get(x, 'Type'), 'figure')));
-                addParameter(p, 'states', false, @islogical); % Handling 'states' flag
-                addParameter(p, 'color', defaultColor, @(x) ischar(x) || (isnumeric(x) && size(x,2) == 3)); % Color input for plotting
-                addParameter(p, 'LineWidth', defaultLineWidth, @isnumeric); % Line width input for plotting
-                addParameter(p, 'LineStyle', '-', @(x) ischar(x) || (isstring(x) && isscalar(x)));
-                addParameter(p, 'blackBackground', blackBackground, @islogical);  % Added 'background' parameter
-                addParameter(p, 'plotRealisticPrimaries', defaultPlotRealisticPrimaries, @islogical);                
-                addParameter(p, 'showLegends', defaultShowLegends, @islogical);                                        
-                addParameter(p, 'plotTitle', defaultPlotTitle, @(x) ischar(x) || isstring(x)); % NEW parameter
+            % Define default values
+            defaultArrows = false;
+            defaultFigHandle = [];
+            defaultColor = 'b';
+            defaultLineWidth = 2;
+            blackBackground = false;
+            defaultPlotRealisticPrimaries = true;
+            defaultShowLegends = true;             % Default to true
+            defaultPlotTitle = 'CR3BP Propagation'; % NEW default title
 
 
-                % Parse input arguments
-                parse(p, varargin{:});
-            
-                % Extract values from the parser
-                arrows = p.Results.arrows;
-                figHandle = p.Results.figureHandle;
-                plotStatesDirectly = p.Results.states;   % Use directly the parsed result
-                plotColor = p.Results.color;             % Extracted color parameter
-                LineWidth = p.Results.LineWidth;         % Extracted line width
-                LineStyle = p.Results.LineStyle;
-                blackBackground = p.Results.blackBackground;  % Extract 'background' parameter
-                plotRealisticPrimaries = p.Results.plotRealisticPrimaries;
-                showLegends = p.Results.showLegends;       
-                plotTitle = char(p.Results.plotTitle);   % Ensure it is char for MATLAB title
+            % Add parameters to input parser
+            addParameter(p, 'arrows', defaultArrows, @islogical);
+            addParameter(p, 'figureHandle', defaultFigHandle, @(x) isempty(x) || (ishandle(x) && strcmp(get(x, 'Type'), 'figure')));
+            addParameter(p, 'states', false, @islogical); % Handling 'states' flag
+            addParameter(p, 'color', defaultColor, @(x) ischar(x) || (isnumeric(x) && size(x,2) == 3)); % Color input for plotting
+            addParameter(p, 'LineWidth', defaultLineWidth, @isnumeric); % Line width input for plotting
+            addParameter(p, 'LineStyle', '-', @(x) ischar(x) || (isstring(x) && isscalar(x)));
+            addParameter(p, 'blackBackground', blackBackground, @islogical);  % Added 'background' parameter
+            addParameter(p, 'plotRealisticPrimaries', defaultPlotRealisticPrimaries, @islogical);
+            addParameter(p, 'showLegends', defaultShowLegends, @islogical);
+            addParameter(p, 'plotTitle', defaultPlotTitle, @(x) ischar(x) || isstring(x)); % NEW parameter
 
-            
+
+            % Parse input arguments
+            parse(p, varargin{:});
+
+            % Extract values from the parser
+            arrows = p.Results.arrows;
+            figHandle = p.Results.figureHandle;
+            plotStatesDirectly = p.Results.states;   % Use directly the parsed result
+            plotColor = p.Results.color;             % Extracted color parameter
+            LineWidth = p.Results.LineWidth;         % Extracted line width
+            LineStyle = p.Results.LineStyle;
+            blackBackground = p.Results.blackBackground;  % Extract 'background' parameter
+            plotRealisticPrimaries = p.Results.plotRealisticPrimaries;
+            showLegends = p.Results.showLegends;
+            plotTitle = char(p.Results.plotTitle);   % Ensure it is char for MATLAB title
+
+
             % - - - - Preliminary Setup - - - - -
-                t_star = 375704.306539867;                  % [s]
-                t_star = t_star/3600;                       % [hrs]
-                
-                % Load textures if primaries are to be plotted
-                if plotRealisticPrimaries
-                    earthTexture = imread('earth.jpg');
-                    moonTexture = imread('moon.tif');
-                end
-            
+            t_star = 375704.306539867;                  % [s]
+            t_star = t_star/3600;                       % [hrs]
+
+            % Load textures if primaries are to be plotted
+            if plotRealisticPrimaries
+                earthTexture = imread('earth.jpg');
+                moonTexture = imread('moon.tif');
+            end
+
             % - - - - Sanity Check on the ICs Vector or Matrix Provided - -
             % - - -
-                if ~plotStatesDirectly 
-                    % Check if ICs is a vector and has exactly 7 elements
-                    if isvector(ICs) && length(ICs) == 7
-                        if iscolumn(ICs)
-                            ICs = ICs';                 % Convert column vector to row vector
-                        end
-                    elseif ismatrix(ICs) && size(ICs, 2) == 7
-                        % No action needed for matrix with correct format
-                    else
-                        error('ICs must be a 7-element vector or a matrix with 7 columns. Each row represents [x, y, z, vx, vy, vz, Tmax].');
+            if ~plotStatesDirectly
+                % Check if ICs is a vector and has exactly 7 elements
+                if isvector(ICs) && length(ICs) == 7
+                    if iscolumn(ICs)
+                        ICs = ICs';                 % Convert column vector to row vector
                     end
-                end 
-            
-               % Check and clean ICs from NaN rows
-                validICs = all(~isnan(ICs), 2);  % Logical index of rows without NaN
-                ICs = ICs(validICs, :);          % Remove rows with NaN
-            
-            % - - - - Figure Initial Setup - - - - -
-            
-                if isempty(figHandle)
-                    f = figure('Visible','on', 'Position', [100, 100, 800, 600]);
-                    hold on
+                elseif ismatrix(ICs) && size(ICs, 2) == 7
+                    % No action needed for matrix with correct format
                 else
-                    f = figure(figHandle);        
-                    set(f, 'Position', [100, 100, 800, 600]);
-                    hold on;                      
+                    error('ICs must be a 7-element vector or a matrix with 7 columns. Each row represents [x, y, z, vx, vy, vz, Tmax].');
                 end
-            
+            end
+
+            % Check and clean ICs from NaN rows
+            validICs = all(~isnan(ICs), 2);  % Logical index of rows without NaN
+            ICs = ICs(validICs, :);          % Remove rows with NaN
+
+            % - - - - Figure Initial Setup - - - - -
+
+            if isempty(figHandle)
+                f = figure('Visible','on', 'Position', [100, 100, 800, 600]);
+                hold on
+            else
+                f = figure(figHandle);
+                set(f, 'Position', [100, 100, 800, 600]);
+                hold on;
+            end
+
 
             % --- Set the background color based on the 'background'
             % parameter ---
-                % Set background and axis colors
-                if blackBackground
-                    % Set to black background
-                    set(gca, 'Color', 'k', 'XColor', 'w', 'YColor', 'w', 'ZColor', 'w', 'FontSize', 14);
-                    set(gcf, 'Color', 'k');
-                    xlabel('X (nd)', 'FontSize', 18, 'Color', 'w');
-                    ylabel('Y (nd)', 'FontSize', 18, 'Color', 'w');
-                    zlabel('Z (nd)', 'FontSize', 18, 'Color', 'w');
-                    title(plotTitle,      'FontSize', 18, 'Color', 'w');
-                    
-                else
-                    % Set to white background (default)
-                    set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'ZColor', 'k', 'FontSize', 14);
-                    set(gcf, 'Color', 'w');
-                    xlabel('X (nd)', 'FontSize', 18, 'Color', 'k');
-                    ylabel('Y (nd)', 'FontSize', 18, 'Color', 'k');
-                    zlabel('Z (nd)', 'FontSize', 18, 'Color', 'k');
-                    title(plotTitle,      'FontSize', 18, 'Color', 'k');
+            % Set background and axis colors
+            if blackBackground
+                % Set to black background
+                set(gca, 'Color', 'k', 'XColor', 'w', 'YColor', 'w', 'ZColor', 'w', 'FontSize', 14);
+                set(gcf, 'Color', 'k');
+                xlabel('X (nd)', 'FontSize', 18, 'Color', 'w');
+                ylabel('Y (nd)', 'FontSize', 18, 'Color', 'w');
+                zlabel('Z (nd)', 'FontSize', 18, 'Color', 'w');
+                title(plotTitle,      'FontSize', 18, 'Color', 'w');
 
-                end
+            else
+                % Set to white background (default)
+                set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'ZColor', 'k', 'FontSize', 14);
+                set(gcf, 'Color', 'w');
+                xlabel('X (nd)', 'FontSize', 18, 'Color', 'k');
+                ylabel('Y (nd)', 'FontSize', 18, 'Color', 'k');
+                zlabel('Z (nd)', 'FontSize', 18, 'Color', 'k');
+                title(plotTitle,      'FontSize', 18, 'Color', 'k');
+
+            end
 
 
             %  - - - - Jacobi Constants or Period Color Mapping to Orbits
             %  when Flag is 1 or 2 - - -
-                if Flag == 1  % If JC plot requested
-                    [JC_Array, ~, ~] = obj.jacobiConstantCR3BP(ICs, mu, n);  % Calculate JC for each row of states
-                    cmap = spring(size(ICs, 1));  % Create a colormap with a color for each orbit
-    
-                    if size(ICs, 1) > 1  % If multiple orbits
-                        JC_min = min(JC_Array);  % Find min JC
-                        JC_max = max(JC_Array);  % Find max JC
-    
-                        % Handle the case when all Jacobi constants are
-                        % equal
-                        if JC_max == JC_min
-                            deltaJC = max(1e-6 * abs(JC_min), eps);
-                            JC_max = JC_min + deltaJC;
-                            colorIndices = ceil(size(cmap, 1) / 2) * ones(size(JC_Array));
-                        else
-                            colorIndices = round(((JC_Array - JC_min) / (JC_max - JC_min)) * (size(cmap, 1) - 1)) + 1;
-                        end
-    
-                        colors = cmap(colorIndices, :);  % Get color values
-                    else  % If single orbit
-                        JC_min = JC_Array;
+            if Flag == 1  % If JC plot requested
+                [JC_Array, ~, ~] = obj.jacobiConstantCR3BP(ICs, mu, n);  % Calculate JC for each row of states
+                cmap = spring(size(ICs, 1));  % Create a colormap with a color for each orbit
+
+                if size(ICs, 1) > 1  % If multiple orbits
+                    JC_min = min(JC_Array);  % Find min JC
+                    JC_max = max(JC_Array);  % Find max JC
+
+                    % Handle the case when all Jacobi constants are
+                    % equal
+                    if JC_max == JC_min
                         deltaJC = max(1e-6 * abs(JC_min), eps);
                         JC_max = JC_min + deltaJC;
-                        colors = cmap(ceil(size(cmap, 1) / 2), :);  % Use middle color
-                    end
-    
-                    % Set the color axis limits using caxis
-                    caxis([JC_min, JC_max]);
-                        
-                elseif Flag == 2                    % Period color map
-                    if plotStatesDirectly
-                        error('I cannot know the period and add it to the plot if your input was a history of states and not an initial condition')
-                    end
-                    periods = ICs(:, 7);                                  % Get all the periods from the ICs
-                    if size(ICs, 1) > 1                                   % If there are multiple orbits
-                        cmap = winter(length(periods));
-                        minVal = min(periods);
-                        maxVal = max(periods);
-                        colorIndices = round(((periods - minVal) / (maxVal - minVal)) * (size(cmap, 1) - 1)) + 1;
-                        colors = cmap(colorIndices, :);
-                        clim(t_star*[minVal maxVal]);                        % Set the colormap axis limits based on periods
+                        colorIndices = ceil(size(cmap, 1) / 2) * ones(size(JC_Array));
                     else
-                        cmap = spring(1);                                    % Generate a colormap for one item
-                        maxVal = periods + 0.00000001;                       % Fake max period for color scale
-                        colors = cmap(1, :);                                 % Use the only available color
-                        clim(t_star*[periods maxVal]);                       % Set limits with fake max
+                        colorIndices = round(((JC_Array - JC_min) / (JC_max - JC_min)) * (size(cmap, 1) - 1)) + 1;
                     end
-                    
+
+                    colors = cmap(colorIndices, :);  % Get color values
+                else  % If single orbit
+                    JC_min = JC_Array;
+                    deltaJC = max(1e-6 * abs(JC_min), eps);
+                    JC_max = JC_min + deltaJC;
+                    colors = cmap(ceil(size(cmap, 1) / 2), :);  % Use middle color
+                end
+
+                % Set the color axis limits using caxis
+                caxis([JC_min, JC_max]);
+
+            elseif Flag == 2                    % Period color map
+                if plotStatesDirectly
+                    error('I cannot know the period and add it to the plot if your input was a history of states and not an initial condition')
+                end
+                periods = ICs(:, 7);                                  % Get all the periods from the ICs
+                if size(ICs, 1) > 1                                   % If there are multiple orbits
+                    cmap = winter(length(periods));
+                    minVal = min(periods);
+                    maxVal = max(periods);
+                    colorIndices = round(((periods - minVal) / (maxVal - minVal)) * (size(cmap, 1) - 1)) + 1;
+                    colors = cmap(colorIndices, :);
+                    clim(t_star*[minVal maxVal]);                        % Set the colormap axis limits based on periods
                 else
-                    % If the caller supplied a 'color', use it for all orbits
-                    % otherwise fall back to MATLAB's default line set.
-                    if ~isempty(plotColor)
-                        colors = repmat(plotColor, size(ICs,1), 1);
+                    cmap = spring(1);                                    % Generate a colormap for one item
+                    maxVal = periods + 0.00000001;                       % Fake max period for color scale
+                    colors = cmap(1, :);                                 % Use the only available color
+                    clim(t_star*[periods maxVal]);                       % Set limits with fake max
+                end
+
+            else
+                % If the caller supplied a 'color', use it for all orbits
+                % otherwise fall back to MATLAB's default line set.
+                if ~isempty(plotColor)
+                    colors = repmat(plotColor, size(ICs,1), 1);
+                else
+                    colors = lines(size(ICs,1));
+                end
+            end
+
+            % Initialize legend entries only if legends are to be shown
+            if showLegends && ~plotStatesDirectly
+                legendEntries = cell(size(ICs, 1), 1);
+            end
+
+
+
+            % --- UPDATE COLORBAR OR SKIP --------------------------------------
+            if Flag == 1 || Flag == 2          % only touch the bar when we really need one
+                % Does a colorbar already exist in this figure?
+                existingCB = findall(gcf,'Type','colorbar');
+
+                if isempty(existingCB)         % none → make a brand-new one and set colormap
+                    colormap(gca, cmap);       % safe: only affects these axes
+                    cb = colorbar;             % create bar
+                    if Flag == 1
+                        title(cb,'Jacobi Constant');
                     else
-                        colors = lines(size(ICs,1));
-                    end              
-                end
-    
-                % Initialize legend entries only if legends are to be shown
-                if showLegends && ~plotStatesDirectly
-                    legendEntries = cell(size(ICs, 1), 1);
-                end
-
-
-
-                % --- UPDATE COLORBAR OR SKIP --------------------------------------
-                if Flag == 1 || Flag == 2          % only touch the bar when we really need one
-                    % Does a colorbar already exist in this figure?
-                    existingCB = findall(gcf,'Type','colorbar');
-
-                    if isempty(existingCB)         % none → make a brand-new one and set colormap
-                        colormap(gca, cmap);       % safe: only affects these axes
-                        cb = colorbar;             % create bar
-                        if Flag == 1
-                            title(cb,'Jacobi Constant');
-                        else
-                            title(cb,'Period (hours)');
-                        end
-                        % style for dark background
-                        if blackBackground
-                            set(cb,'Color','w');
-                            cb.Title.Color = 'w';
-                        end
-                        set(cb,'FontSize',18);     % keep this on the new bar only
-                    else                           % a bar is already there → leave it alone
-                        cb = existingCB(1);        % (optional) handle, but no edits
+                        title(cb,'Period (hours)');
                     end
+                    % style for dark background
+                    if blackBackground
+                        set(cb,'Color','w');
+                        cb.Title.Color = 'w';
+                    end
+                    set(cb,'FontSize',18);     % keep this on the new bar only
+                else                           % a bar is already there → leave it alone
+                    cb = existingCB(1);        % (optional) handle, but no edits
                 end
+            end
 
 
-            
+
             % - - - - PROPAGATE AND PLOT EACH IC - - -
-            
-                if ~plotStatesDirectly
-            
-                    for i = 1:size(ICs, 1)
-                        x0_nd = ICs(i, 1:6);            % Initial state conditions
-                        Tmax_nd = ICs(i, end);          % Last element is Max adimensional time for simulation
-                        tspan_nd = [0, Tmax_nd];        % Non-dimensional timespan for sim
 
-                        % % Change color assignment to use colormap
-                        % if Flag > 0
-                        %        color = colors(i, :);     % Corrected indexing
-                        % else
-                        %       defaultColors = lines(size(ICs, 1)); % Generate enough colors for each orbit
-                        %       color = defaultColors(i, :);         % Use modulo to cycle through colors
-                        % end
+            if ~plotStatesDirectly
 
-                        color = colors(i,:);   % colors was set correctly above for ANY Flag
+                for i = 1:size(ICs, 1)
+                    x0_nd = ICs(i, 1:6);            % Initial state conditions
+                    Tmax_nd = ICs(i, end);          % Last element is Max adimensional time for simulation
+                    tspan_nd = [0, Tmax_nd];        % Non-dimensional timespan for sim
 
-                
-                        % Propagate the ODE
-                        [t, y] = ode45(@(t, X) obj.dynamicsCR3BP(obj,X, mu, n), tspan_nd, x0_nd, optionsODE);
-                
-                        % Plot the trajectory of the S/C
-                        plot3(y(:, 1), y(:, 2), y(:, 3), 'Color', color, 'LineWidth', LineWidth, 'LineStyle', LineStyle);
-                      
-                        % If requested, calc and plot vector of initial velocity
-                        
-                        if arrows
-                            ax = gca;
-                            xl = ax.XLim; yl = ax.YLim; zl = ax.ZLim;
-                            plotSize = norm([diff(xl), diff(yl), diff(zl)]);
-                            arrowScale = 0.005 * plotSize;  % arrows about 10% of the overall axes size
+                    % % Change color assignment to use colormap
+                    % if Flag > 0
+                    %        color = colors(i, :);     % Corrected indexing
+                    % else
+                    %       defaultColors = lines(size(ICs, 1)); % Generate enough colors for each orbit
+                    %       color = defaultColors(i, :);         % Use modulo to cycle through colors
+                    % end
 
-                            pos_vector = ICs(i,1:3); vel_vector = ICs(i,4:6);
-                            % Use the computed arrowScale as the "scale" argument:
-                            quiver3( ...
-                                pos_vector(1), pos_vector(2), pos_vector(3), ...
-                                vel_vector(1), vel_vector(2), vel_vector(3), ...
-                                arrowScale, 'Color', color, 'MaxHeadSize', 2.5);
-                        end
-   
-                        
-                        % Generate label for the legend if legends are to
-                        % be shown
-                        if showLegends
-                            legendEntries{i} = sprintf('IC-%d: [%.2f, %.2f, %.2f, %.2f, %.2f, %.2f]', i, x0_nd);
-                        end
+                    color = colors(i,:);   % colors was set correctly above for ANY Flag
 
+
+                    % Propagate the ODE
+                    [t, y] = ode45(@(t, X) obj.dynamicsCR3BP(obj,X, mu, n), tspan_nd, x0_nd, optionsODE);
+
+                    % Plot the trajectory of the S/C
+                    plot3(y(:, 1), y(:, 2), y(:, 3), 'Color', color, 'LineWidth', LineWidth, 'LineStyle', LineStyle);
+
+                    % If requested, calc and plot vector of initial velocity
+
+                    if arrows
+                        ax = gca;
+                        xl = ax.XLim; yl = ax.YLim; zl = ax.ZLim;
+                        plotSize = norm([diff(xl), diff(yl), diff(zl)]);
+                        arrowScale = 0.005 * plotSize;  % arrows about 10% of the overall axes size
+
+                        pos_vector = ICs(i,1:3); vel_vector = ICs(i,4:6);
+                        % Use the computed arrowScale as the "scale" argument:
+                        quiver3( ...
+                            pos_vector(1), pos_vector(2), pos_vector(3), ...
+                            vel_vector(1), vel_vector(2), vel_vector(3), ...
+                            arrowScale, 'Color', color, 'MaxHeadSize', 2.5);
                     end
-                else 
-                    % Plot already computed state trajectories
-                     plot3(ICs(:, 1), ICs(:, 2), ICs(:, 3), 'Color', plotColor, 'LineWidth', LineWidth, 'LineStyle', LineStyle);
-                end 
-            
-        % ---------- EARTH & MOON -------------------------------------------
-                EarthPosition = [- mu, 0, 0];     % Earth at origin
-                MoonPosition = [1 - mu, 0, 0]; % Moon at (1 - mu, 0, 0)    
-                EarthRadius = 6378.1 / 384400; % Earth's radius in nondimensional units
-                MoonRadius = 1737.4 / 384400;  % Moon's radius in nondimensional units 
 
-            if plotRealisticPrimaries                                           
+
+                    % Generate label for the legend if legends are to
+                    % be shown
+                    if showLegends
+                        legendEntries{i} = sprintf('IC-%d: [%.2f, %.2f, %.2f, %.2f, %.2f, %.2f]', i, x0_nd);
+                    end
+
+                end
+            else
+                % Plot already computed state trajectories
+                plot3(ICs(:, 1), ICs(:, 2), ICs(:, 3), 'Color', plotColor, 'LineWidth', LineWidth, 'LineStyle', LineStyle);
+            end
+
+            % ---------- EARTH & MOON -------------------------------------------
+            EarthPosition = [- mu, 0, 0];     % Earth at origin
+            MoonPosition = [1 - mu, 0, 0]; % Moon at (1 - mu, 0, 0)
+            EarthRadius = 6378.1 / 384400; % Earth's radius in nondimensional units
+            MoonRadius = 1737.4 / 384400;  % Moon's radius in nondimensional units
+
+            if plotRealisticPrimaries
                 % Plot Earth with texture
-                [Xe, Ye, Ze] = sphere(50); 
+                [Xe, Ye, Ze] = sphere(50);
                 EarthHandle = surf(EarthPosition(1) + EarthRadius*Xe, EarthPosition(2) + EarthRadius*Ye, EarthPosition(3) + EarthRadius*Ze, 'EdgeColor', 'none', 'FaceColor', 'texturemap', 'CData', earthTexture, 'DisplayName', 'Earth');
                 set(EarthHandle, 'FaceAlpha', 0.8, 'FaceLighting', 'gouraud');
 
@@ -659,63 +656,186 @@ methods
             else
                 scatter3(MoonPosition(1), MoonPosition(2), 0, 40, 'color', [.5 .5 .5]);
                 scatter3(EarthPosition(1), EarthPosition(2), 0, 40, 'b');
-            end 
+            end
 
 
             % ---------- LIBRATION POINTS ----------------------------------------
-                if blackBackground
-                    lpMarkerColor = 'w';
-                else
-                    lpMarkerColor = 'k';
-                end
-    
-                for i = 1:size(Lpoints, 1)
-                    Lpoint = Lpoints(i, :);
-                    if Lpoint(1) ~= 0
-                        % Plot libration point using a dot marker
-                        % scatter3(Lpoint(1), Lpoint(2), 0, 40, 'w',
-                        % 'filled', 'DisplayName', sprintf('L%d', i));
-                        scatter3(Lpoint(1), Lpoint(2), 0, 40, 'r', 'filled', 'DisplayName', sprintf('L%d', i));
-    
-                        % Add label above the libration point
-                        % text(Lpoint(1), Lpoint(2), 0, sprintf('L%d', i),
-                        % 'Color', 'white', 'VerticalAlignment', 'bottom',
-                        % 'HorizontalAlignment', 'center', 'FontSize', 10,
-                        % 'FontWeight', 'bold');
-                        text(Lpoint(1), Lpoint(2), 0, sprintf('L%d', i), 'Color', lpMarkerColor, 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'center', 'FontSize', 10, 'FontWeight', 'bold');
-                    end
-                end
+            if blackBackground
+                lpMarkerColor = 'w';
+            else
+                lpMarkerColor = 'k';
+            end
 
-                % ---------- LEGENDS -------------------------------------------
-                if showLegends && ~plotStatesDirectly
-                    legend(legendEntries, 'Location', 'bestoutside', 'TextColor', 'black', 'Color', 'white');
+            for i = 1:size(Lpoints, 1)
+                Lpoint = Lpoints(i, :);
+                if Lpoint(1) ~= 0
+                    % Plot libration point using a dot marker
+                    % scatter3(Lpoint(1), Lpoint(2), 0, 40, 'w',
+                    % 'filled', 'DisplayName', sprintf('L%d', i));
+                    scatter3(Lpoint(1), Lpoint(2), 0, 40, 'r', 'filled', 'DisplayName', sprintf('L%d', i));
+
+                    % Add label above the libration point
+                    % text(Lpoint(1), Lpoint(2), 0, sprintf('L%d', i),
+                    % 'Color', 'white', 'VerticalAlignment', 'bottom',
+                    % 'HorizontalAlignment', 'center', 'FontSize', 10,
+                    % 'FontWeight', 'bold');
+                    text(Lpoint(1), Lpoint(2), 0, sprintf('L%d', i), 'Color', lpMarkerColor, 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'center', 'FontSize', 10, 'FontWeight', 'bold');
                 end
+            end
 
-                % ---------- FINAL TOUCHES -------------------------------------------
-                % xlim([-1.5 1.5]);   ylim([-1 1.5]);     zlim([-1 1]);
+            % ---------- LEGENDS -------------------------------------------
+            if showLegends && ~plotStatesDirectly
+                legend(legendEntries, 'Location', 'bestoutside', 'TextColor', 'black', 'Color', 'white');
+            end
 
-                rotate3d on;                
-                set(gca,'DataAspectRatio',[1 1 1])
-                cameratoolbar('Show');
-                cameratoolbar('SetMode','orbit');
+            % ---------- FINAL TOUCHES -------------------------------------------
+            % xlim([-1.5 1.5]);   ylim([-1 1.5]);     zlim([-1 1]);
+
+            rotate3d on;
+            set(gca,'DataAspectRatio',[1 1 1])
+            cameratoolbar('Show');
+            cameratoolbar('SetMode','orbit');
 
         end
 
-        %% .
-        %% .
-        %% .
+
+
+        % Zero Velocity Curves ZVCs
+        function h = plotZVC(obj, mu, C0, xlims, ylims, N, XLi, r0)
+            %PLOTZVC_CR3BP  Plot Zero-Velocity Curves (ZVC) for a given Jacobi value in the CR3BP.
+            %
+            %   h = plotZVC_CR3BP(obj, mu, C0, xlims, ylims, N, XLi, r0)
+            %
+            % Description
+            % ----------
+            % Draws the ZVC boundary (where v = 0) for the nondimensional CR3BP with
+            % mean motion n = 1. The forbidden region { 2U* - C < 0 } is shaded;
+            % the boundary where 2U* - C = 0 is plotted as a contour line.
+            %
+            % Inputs
+            % ------
+            % obj    : (unused hook for class/library methods; pass your CR3BP object)
+            % mu     : mass ratio, m2/(m1 + m2)  (scalar)
+            % C0     : Jacobi constant for which to draw the ZVC (scalar)
+            % xlims  : 1x2 limits for x-axis, e.g., [-1.6 1.6]
+            % ylims  : 1x2 limits for y-axis, e.g., [-1.6 1.6]
+            % N      : grid size per axis (e.g., 400–800). If empty or omitted, N=600.
+            % XLi    : (optional) libration point states to annotate.
+            %          Accepts either:
+            %            - kx2 matrix of [x y] coordinates, or
+            %            - kx6 matrix of CR3BP states [x y z vx vy vz] (first two cols used).
+            %          Pass [] to skip.
+            % r0     : (optional) initial position to mark.
+            %          Accepts 1x3 or 3x1. Only x,y are used. Pass [] to skip.
+            %
+            % Outputs
+            % -------
+            % h      : struct of graphics handles:
+            %          .fig, .ax, .hForbidden, .hZVC, .hEarth, .hMoon, .hLi, .hIC
+            %
+            % Notes
+            % -----
+            % * Units are nondimensional; n = 1 is assumed.
+            % * The potential used is U* = (1-mu)/d + mu/r + 0.5*(x^2+y^2),
+            %   with d = sqrt((x+mu)^2 + y^2) and r = sqrt((x-1+mu)^2 + y^2).
+            % * The ZVC boundary is the level set C_grid(x,y) = C0 where
+            %     C_grid = x^2 + y^2 + 2(1-mu)/d + 2mu/r.
+            % * r0 may be given as row or column; it is internally reshaped to 3x1.
+            %
+            % Example
+            % -------
+            %   XLi = [xL1 yL1; xL2 yL2; xL3 yL3; 0.5-mu  sqrt(3)/2; 0.5-mu -sqrt(3)/2];
+            %   plotZVC_CR3BP(cr3bpObj, mu, C_IC, [-1.6 1.6], [-1.6 1.6], 600, XLi, [-0.27 -0.42 0]);
+            %
+            % See also: contour, contourf
+
+            % ---------- Defaults & input hygiene ----------
+            if nargin < 6 || isempty(N), N = 600; end
+            if nargin < 7, XLi = []; end
+            if nargin < 8, r0  = []; end
+
+            % Accept either kx6 or kx2 for XLi; use first two columns for plotting
+            if ~isempty(XLi)
+                if size(XLi,2) >= 2
+                    XLi = XLi(:,1:2);
+                else
+                    error('plotZVC_CR3BP:BadXLi','XLi must have at least 2 columns [x y].');
+                end
+            end
+
+            % Accept row or column for r0; keep only first two components
+            if ~isempty(r0)
+                r0 = r0(:);                        % make column
+                if numel(r0) < 2
+                    error('plotZVC_CR3BP:BadR0','r0 must have at least x and y components.');
+                end
+            end
+
+            % ---------- Grid & potential field ----------
+            x = linspace(xlims(1), xlims(2), N);
+            y = linspace(ylims(1), ylims(2), N);
+            [X,Y] = meshgrid(x,y);
+
+            % distances to primaries (avoid singularities)
+            d = sqrt((X+mu).^2 + Y.^2);   d(d < 1e-12) = 1e-12;
+            r = sqrt((X-1+mu).^2 + Y.^2); r(r < 1e-12) = 1e-12;
+
+            % ZVC field with v=0: C_grid = x^2 + y^2 + 2(1-mu)/d + 2mu/r
+            Cgrid = X.^2 + Y.^2 + 2*(1-mu)./d + 2*mu./r;
+
+            % ---------- Plot ----------
+            h.fig = figure('Color','w');
+            h.ax  = axes('NextPlot','add'); grid(h.ax,'on'); box(h.ax,'on'); axis(h.ax,'equal');
+
+            % Forbidden region (2U* - C0 < 0) -> Cgrid < C0
+            clim = [min(Cgrid(:)) C0];
+            h.hForbidden = contourf(h.ax, X, Y, Cgrid, clim, 'LineStyle','none');
+            colormap(h.ax, [0.95 0.95 0.95]);
+
+            % ZVC boundary Cgrid = C0
+            h.hZVC = contour(h.ax, X, Y, Cgrid, [C0 C0], 'k', 'LineWidth', 1.8);
+
+            % Primaries in barycentric coords
+            h.hEarth = scatter(h.ax, -mu, 0, 70, 'b', 'filled');
+            h.hMoon  = scatter(h.ax, 1-mu, 0, 70, 'k', 'filled');
+
+            % Libration points (optional)
+            h.hLi = gobjects(0);
+            if ~isempty(XLi)
+                h.hLi = scatter(h.ax, XLi(:,1), XLi(:,2), 45, 'k', 'filled');
+                txt = {'L1','L2','L3','L4','L5'};
+                for i = 1:min(5,size(XLi,1))
+                    text(h.ax, XLi(i,1)+0.03, XLi(i,2)+0.03, txt{i}, ...
+                        'Color','k','FontSize',10,'Interpreter','none');
+                end
+            end
+
+            % Initial condition marker (optional)
+            h.hIC = gobjects(1);
+            if ~isempty(r0)
+                h.hIC = scatter(h.ax, r0(1), r0(2), 45, 'r', 'filled');
+                text(h.ax, r0(1)+0.03, r0(2)-0.06, 'IC', 'Color','r');
+            end
+
+            xlim(h.ax, xlims); ylim(h.ax, ylims);
+            xlabel(h.ax, 'x (nd)'); ylabel(h.ax, 'y (nd)');
+            title(h.ax, sprintf('ZVC for C = %.12f   (CR3BP, nd)', C0));
+            legend(h.ax, {'Forbidden region','ZVC (v=0)','Earth','Moon','L-points','IC'}, ...
+                'Location','bestoutside');
+
+        end
+
+
+
+        %% ===============================================================
         %% 3.4) Targeter Functions to Find Transfers
 
 
-
-        % ===============================================================
-        %  Final-state targeter  ( y , z , vx , vy , vz )  – stop at X = x f
-        % ===============================================================
-        
         function [X0_optimized , dV0_opt , dVf , Ttraj , exit_flag , ...
-                iter_count   , errHistory] = ...
-                finalStateTargeter_StopAtXf( ...
-                obj, X0_start , dV_guess , X_target , mu , n , Tmax , tolODE , tolErr , maxIter)
+          iter_count   , errHistory , iterLog , trajHistory , X0_hist , Xplane_hist] = ...
+          finalStateTargeter_StopAtXf( ...
+          obj, X0_start , dV_guess , X_target , mu , n , Tmax , tolODE , tolErr , maxIter)
+  
             % ===============================================================
             %  Final-state targeter ( y , z , vx , vy , vz ) – stop at X = x_f
             % ===============================================================
@@ -724,7 +844,7 @@ methods
             %    Iteratively corrects the initial velocity so that, after propagating
             %    in the CR3BP until crossing the x-plane (x = x_f), the final state
             %    matches the target values in:
-            %       - y, z, vx, vy, vz            
+            %       - y, z, vx, vy, vz
             %  Method:
             %    Uses a differential correction scheme:
             %      1. Propagate state + STM until x = x_f.
@@ -755,73 +875,110 @@ methods
             %
             % ===============================================================
 
-           
-
             % -------- initialization ----------------------------------------
-            verbose = true;
-            iter_count  = 0;         
+            verbose     = false;
+            iter_count  = 0;
             exit_flag   = 0;
-            errHistory  = [];                             % store norm of error in each loop
+
+            errHistory  = [];     % scalar norm per iteration
+            iterLog     = [];     % one row per iteration (see header)
+            trajHistory = {};     % cell of [x y z vx vy vz t]
+            X0_hist     = [];     % [x0..vz0 t0]
+            Xplane_hist = [];     % [x..vz tf hit plane_gap]
 
             if isrow(X0_start),  X0_start = X0_start.'; end
-            X0_start      = X0_start(1:6);
-            rf_target     = X_target(1:3);                % final desired position 
-            vf_target     = X_target(4:6);                % final desired velocity 
-            X0_optimized        = X0_start;               % initialize optimal X0
-            X0_optimized(4:6)   = X0_optimized(4:6) + dV_guess(:);
+            X0_start   = X0_start(1:6);
+            rf_target  = X_target(1:3);      % desired final position
+            vf_target  = X_target(4:6);      % desired final velocity
+
+            X0_optimized      = X0_start;    % initialize optimal X0
+            X0_optimized(4:6) = X0_optimized(4:6) + dV_guess(:);
 
             xf_tar  = rf_target(1);   yf_tar  = rf_target(2);   zf_tar  = rf_target(3);
-            vxf_tar = vf_target(1);   vyf_tar = vf_target(2);   vzf_tar = vf_target(3);
 
-            options = odeset('Events',@eventStopAtXf,'RelTol',tolODE,'AbsTol',tolODE);
-
-
+            % Event opts (+ MaxStep helps not to leap over the root)
+            options = odeset('Events',@eventStopAtXf,'RelTol',tolODE,'AbsTol',tolODE, ...
+                'MaxStep', Tmax/2000);
 
             % -------- differential-correction loop --------------------------
             while iter_count < maxIter
 
-                % propagate state and STM
-                [T , Xaug] = ode45(@(t,X) obj.augmentedDynamicsCR3BP(t,X,mu,n), ...
+                % Log the iterate's starting state (t=0 in 7th col)
+                X0_hist(end+1,:) = [X0_optimized(:).'  0];
+
+                % propagate state+STM; capture event outputs
+                [T, Xaug, TE, YE, ~] = ode45(@(t,X) obj.augmentedDynamicsCR3BP(t,X,mu,n), ...
                     [0 Tmax] , [X0_optimized ; reshape(eye(6),36,1)] , ...
                     options);
 
-                % extract final state and STM from propagation
-                Xf     = Xaug(end,1:6).';s
-                Phi_tf = reshape(Xaug(end,7:end),6,6);
-                
-                % compute y and z position errors 
+                % Build a [x y z vx vy vz t] history (downsample to ~500 samples)
+                if numel(T) > 500
+                    idx = round(linspace(1,numel(T),500));
+                else
+                    idx = 1:numel(T);
+                end
+                trajHistory{end+1,1} = [ Xaug(idx,1:6) , T(idx) ];
+
+                % extract final state and STM: prefer event, else use last point
+                hit     = ~isempty(TE);
+                if hit
+                    tf     = TE(end);
+                    Xaug_f = YE(end,:);        % augmented state at the event
+                else
+                    tf     = T(end);
+                    Xaug_f = Xaug(end,:);
+                end
+                Xf     = Xaug_f(1:6).';
+                Phi_tf = reshape(Xaug_f(7:end),6,6);
+
+                % plane diagnostics
+                plane_gap = Xf(1) - xf_tar;    % should be ~0 if hit==true
+
+                % compute y,z pos errors and vx,vy,vz errors (goal - actual form)
                 posErr = [ yf_tar - Xf(2) ;
                     zf_tar - Xf(3) ];
+                velErr = [ vf_target(1) - Xf(4) ;
+                    vf_target(2) - Xf(5) ;
+                    vf_target(3) - Xf(6) ];
 
-                % compute vx, vy, vz errors 
-                velErr = [ vxf_tar - Xf(4) ;
-                    vyf_tar - Xf(5) ;
-                    vzf_tar - Xf(6) ];
-
-                % put all errors in one single vector and take its norm 
+                % keep nondimensional bookkeeping
                 errVec  = [posErr ; velErr];
                 errNorm = norm(errVec);
                 errHistory(end+1,1) = errNorm;
 
-                if verbose
-                    fprintf('iter %3d   |err| = %.3e   ‖ΔVcorr‖ = %.3e nd\n', ...
-                        iter_count, errNorm, norm(errVec));
-                end
+                % log the plane hit state for this iteration
+                Xplane_hist(end+1,:) = [Xf(:).'  tf  double(hit)  plane_gap];
 
+                if verbose
+                    % also print physical units for intuition (optional)
+                    l_star_km  = 389703;
+                    v_star_kms = 1.01754797650856;
+                    dy_km   = posErr(1) * l_star_km;
+                    dz_km   = posErr(2) * l_star_km;
+                    dv_kms  = norm(velErr) * v_star_kms;
+
+                    fprintf('iter %3d  tf=%.6f  hit=%d  plane_gap=%.3e  |pos(y,z)|=%.3e km  |vel|=%.3e km/s\n', ...
+                        iter_count, tf, hit, plane_gap, hypot(dy_km,dz_km), dv_kms);
+                end
 
                 % --- convergence? ---------------------------------------------------
                 if errNorm < tolErr
                     exit_flag  = 1;
-                    Ttraj      = T(end);
-                    dVf        = -Xf(4:6);
-                    dV0_opt    = X0_optimized(4:6) - X0_start(4:6);
+                    Ttraj      = tf;
+                    dVf        = (vf_target - Xf(4:6));                   % ΔV at final hit
+                    dV0_opt    = X0_optimized(4:6) - X0_start(4:6);       % net ΔV at t0
+                    % final log row (no ΔVcorr this time)
+                    iterLog(end+1,:) = [iter_count, tf, plane_gap, posErr(1), posErr(2), velErr(1), velErr(2), velErr(3), double(hit), errNorm, NaN];
                     return
                 end
 
                 % --- build K matrix -------------------------------------------------
                 vxf = Xf(4); vyf = Xf(5); vzf = Xf(6);
-                a_tf = obj.dynamicsCR3BP(0,Xf,mu,n);   % dynamics at final position [vẋ vẏ vż] in 4:6
-                axf = a_tf(4); ayf = a_tf(5); azf = a_tf(6);
+                % guard tiny vxf to avoid blow-up in divisions
+                if abs(vxf) < 1e-8, vxf = sign(vxf + (vxf==0)) * 1e-8; end
+
+                Xdot_tf = obj.dynamicsCR3BP(0,Xf,mu,n);  % [ẋ ẏ ż v̇x v̇y v̇z]
+                axf = Xdot_tf(4); ayf = Xdot_tf(5); azf = Xdot_tf(6);
 
                 K = [ Phi_tf(2,4)-Phi_tf(1,4)*(vyf/vxf) , Phi_tf(2,5)-Phi_tf(1,5)*(vyf/vxf) , Phi_tf(2,6)-Phi_tf(1,6)*(vyf/vxf) ;
                     Phi_tf(3,4)-Phi_tf(1,4)*(vzf/vxf) , Phi_tf(3,5)-Phi_tf(1,5)*(vzf/vxf) , Phi_tf(3,6)-Phi_tf(1,6)*(vzf/vxf) ;
@@ -829,33 +986,197 @@ methods
                     Phi_tf(5,4)-Phi_tf(1,4)*(ayf/vxf) , Phi_tf(5,5)-Phi_tf(1,5)*(ayf/vxf) , Phi_tf(5,6)-Phi_tf(1,6)*(ayf/vxf) ;
                     Phi_tf(6,4)-Phi_tf(1,4)*(azf/vxf) , Phi_tf(6,5)-Phi_tf(1,5)*(azf/vxf) , Phi_tf(6,6)-Phi_tf(1,6)*(azf/vxf) ];
 
-                warning('off','MATLAB:rankDeficientMatrix');
-                dVcorr = pinv(K) * errVec;              % least-squares correction
-                warning('on','MATLAB:rankDeficientMatrix');
+                % solve least squares for ΔV correction
+                dVcorr = pinv(K) * errVec;     % sign matches goal-actual definition above
 
+                % apply and log
                 X0_optimized(4:6) = X0_optimized(4:6) + dVcorr;
-                iter_count        = iter_count + 1;
+                iterLog(end+1,:)  = [iter_count, tf, plane_gap, posErr(1), posErr(2), velErr(1), velErr(2), velErr(3), double(hit), errNorm, norm(dVcorr)];
 
+                iter_count = iter_count + 1;
 
                 if verbose
-                    fprintf('iter %2d |err| = %.3e   ‖ΔV‖=%.3e nd\n', ...
-                        iter_count, errNorm, norm(dVcorr));
+                    fprintf('iter %2d  ||err||=%.3e   ||ΔVcorr||=%.3e nd\n', iter_count, errNorm, norm(dVcorr));
                 end
             end
 
             % -------- no convergence -----------------------------------------------
-            exit_flag   = -1;
-            X0_optimized= NaN(6,1); dV0_opt = NaN(1,3);
-            dVf         = NaN(1,3); Ttraj = NaN;
+            exit_flag    = -1;
+            X0_optimized = NaN(6,1); dV0_opt = NaN(1,3);
+            dVf          = NaN(1,3); Ttraj   = NaN;
 
             % ---------- nested event -----------------------------------------------
             function [value,isterminal,direction] = eventStopAtXf(~,Xaug)
                 value      = Xaug(1) - xf_tar;  % stop when x = x_target
                 isterminal = 1;                 % halt
-                direction  = 0;
+                direction  = 0;                 % either crossing direction accepted
             end
         end
 
+
+
+
+
+        % ===============================================================
+        %  Final-state targeter  ( y , z , vx , vy , vz )  – stop at X = x f
+        % ===============================================================
+        
+        % function [X0_optimized , dV0_opt , dVf , Ttraj , exit_flag , ...
+        %         iter_count   , errHistory] = ...
+        %         finalStateTargeter_StopAtXf( ...
+        %         obj, X0_start , dV_guess , X_target , mu , n , Tmax , tolODE , tolErr , maxIter)
+        %     % ===============================================================
+        %     %  Final-state targeter ( y , z , vx , vy , vz ) – stop at X = x_f
+        %     % ===============================================================
+        %     %
+        %     %  Purpose:
+        %     %    Iteratively corrects the initial velocity so that, after propagating
+        %     %    in the CR3BP until crossing the x-plane (x = x_f), the final state
+        %     %    matches the target values in:
+        %     %       - y, z, vx, vy, vz            
+        %     %  Method:
+        %     %    Uses a differential correction scheme:
+        %     %      1. Propagate state + STM until x = x_f.
+        %     %      2. Compute position/velocity errors vs. target.
+        %     %      3. Build a linear system (K-matrix) linking Δ(initial velocity) to final errors.
+        %     %      4. Solve for correction via pseudoinverse of K.
+        %     %      5. Update initial velocity guess and iterate until convergence.
+        %     %
+        %     %  Inputs:
+        %     %    obj         : Object with CR3BP dynamics methods.
+        %     %    X0_start    : Initial state [x y z vx vy vz] at t = 0.
+        %     %    dV_guess    : Initial guess for ΔV at t = 0.
+        %     %    X_target    : Target final state [x y z vx vy vz] at x = x_f.
+        %     %    mu, n       : CR3BP parameters (mass ratio, mean motion).
+        %     %    Tmax        : Max allowed propagation time.
+        %     %    tolODE      : ODE solver tolerances (RelTol, AbsTol).
+        %     %    tolErr      : Convergence tolerance on error norm.
+        %     %    maxIter     : Max correction iterations.
+        %     %
+        %     %  Outputs:
+        %     %    X0_optimized: Optimized initial state [x y z vx vy vz].
+        %     %    dV0_opt     : Optimal ΔV applied at t = 0.
+        %     %    dVf         : ΔV to match final velocity exactly.
+        %     %    Ttraj       : Propagation time until x = x_f.
+        %     %    exit_flag   :  1 = converged, -1 = no convergence.
+        %     %    iter_count  : Number of iterations used.
+        %     %    errHistory  : Error norm history per iteration.
+        %     %
+        %     % ===============================================================
+        % 
+        % 
+        % 
+        %     % -------- initialization ----------------------------------------
+        %     verbose = true;
+        %     iter_count  = 0;         
+        %     exit_flag   = 0;
+        %     errHistory  = [];                             % store norm of error in each loop
+        % 
+        %     if isrow(X0_start),  X0_start = X0_start.'; end
+        %     X0_start      = X0_start(1:6);
+        %     rf_target     = X_target(1:3);                % final desired position 
+        %     vf_target     = X_target(4:6);                % final desired velocity 
+        %     X0_optimized        = X0_start;               % initialize optimal X0
+        %     X0_optimized(4:6)   = X0_optimized(4:6) + dV_guess(:);
+        % 
+        %     xf_tar  = rf_target(1);   yf_tar  = rf_target(2);   zf_tar  = rf_target(3);
+        %     vxf_tar = vf_target(1);   vyf_tar = vf_target(2);   vzf_tar = vf_target(3);
+        % 
+        %     options = odeset('Events',@eventStopAtXf,'RelTol',tolODE,'AbsTol',tolODE);
+        % 
+        % 
+        %     % -------- differential-correction loop --------------------------
+        %     while iter_count < maxIter
+        % 
+        %         % propagate state and STM
+        %         [T , Xaug] = ode45(@(t,X) obj.augmentedDynamicsCR3BP(t,X,mu,n), ...
+        %             [0 Tmax] , [X0_optimized ; reshape(eye(6),36,1)] , ...
+        %             options);
+        % 
+        %         % extract final state and STM from propagation
+        %         Xf     = Xaug(end,1:6).';
+        %         Phi_tf = reshape(Xaug(end,7:end),6,6);
+        % 
+        %         % compute y and z position errors 
+        %         posErr = [ yf_tar - Xf(2) ;
+        %             zf_tar - Xf(3) ];
+        % 
+        %         % compute vx, vy, vz errors
+        %         velErr = [ vxf_tar - Xf(4) ;
+        %             vyf_tar - Xf(5) ;
+        %             vzf_tar - Xf(6) ];
+        % 
+        %         % CR3BP scales (km, km/s)
+        %         l_star_km  = 389703;
+        %         v_star_kms = 1.01754797650856;
+        % 
+        %         % convert to physical units
+        %         dy_km   = posErr(1) * l_star_km;
+        %         dz_km   = posErr(2) * l_star_km;
+        %         dvx_kms = velErr(1) * v_star_kms;
+        %         dvy_kms = velErr(2) * v_star_kms;
+        %         dvz_kms = velErr(3) * v_star_kms;
+        % 
+        %         posErrNorm_km = hypot(dy_km, dz_km);
+        %         velErrNorm_kms = norm([dvx_kms; dvy_kms; dvz_kms]);
+        % 
+        %         % keep nondimensional vector for solver bookkeeping
+        %         errVec  = [posErr ; velErr];
+        %         errNorm = norm(errVec);
+        %         errHistory(end+1,1) = errNorm;
+        % 
+        %         if verbose
+        %             fprintf('iter %3d  pos [km]: dy=%.3e  dz=%.3e  (|pos|=%.3e)   vel [km/s]: dvx=%.3e  dvy=%.3e  dvz=%.3e  (|vel|=%.3e)\n', ...
+        %                 iter_count, dy_km, dz_km, posErrNorm_km, dvx_kms, dvy_kms, dvz_kms, velErrNorm_kms);
+        %         end
+        % 
+        %         % --- convergence? ---------------------------------------------------
+        %         if errNorm < tolErr
+        %             exit_flag  = 1;
+        %             Ttraj      = T(end);
+        %             dVf        = -Xf(4:6);
+        %             dV0_opt    = X0_optimized(4:6) - X0_start(4:6);
+        %             return
+        %         end
+        % 
+        %         % --- build K matrix -------------------------------------------------
+        %         vxf = Xf(4); vyf = Xf(5); vzf = Xf(6);
+        %         a_tf = obj.dynamicsCR3BP(0,Xf,mu,n);   % dynamics at final position [vẋ vẏ vż] in 4:6
+        %         axf = a_tf(4); ayf = a_tf(5); azf = a_tf(6);
+        % 
+        %         K = [ Phi_tf(2,4)-Phi_tf(1,4)*(vyf/vxf) , Phi_tf(2,5)-Phi_tf(1,5)*(vyf/vxf) , Phi_tf(2,6)-Phi_tf(1,6)*(vyf/vxf) ;
+        %             Phi_tf(3,4)-Phi_tf(1,4)*(vzf/vxf) , Phi_tf(3,5)-Phi_tf(1,5)*(vzf/vxf) , Phi_tf(3,6)-Phi_tf(1,6)*(vzf/vxf) ;
+        %             Phi_tf(4,4)-Phi_tf(1,4)*(axf/vxf) , Phi_tf(4,5)-Phi_tf(1,5)*(axf/vxf) , Phi_tf(4,6)-Phi_tf(1,6)*(axf/vxf) ;
+        %             Phi_tf(5,4)-Phi_tf(1,4)*(ayf/vxf) , Phi_tf(5,5)-Phi_tf(1,5)*(ayf/vxf) , Phi_tf(5,6)-Phi_tf(1,6)*(ayf/vxf) ;
+        %             Phi_tf(6,4)-Phi_tf(1,4)*(azf/vxf) , Phi_tf(6,5)-Phi_tf(1,5)*(azf/vxf) , Phi_tf(6,6)-Phi_tf(1,6)*(azf/vxf) ];
+        % 
+        %         warning('off','MATLAB:rankDeficientMatrix');
+        %         dVcorr = pinv(K) * errVec;              % least-squares correction
+        %         warning('on','MATLAB:rankDeficientMatrix');
+        % 
+        %         X0_optimized(4:6) = X0_optimized(4:6) + dVcorr;
+        %         iter_count        = iter_count + 1;
+        % 
+        % 
+        %         if verbose
+        %             fprintf('iter %2d |err| = %.3e   ‖ΔV‖=%.3e nd\n', ...
+        %                 iter_count, errNorm, norm(dVcorr));
+        %         end
+        %     end
+        % 
+        %     % -------- no convergence -----------------------------------------------
+        %     exit_flag   = -1;
+        %     X0_optimized= NaN(6,1); dV0_opt = NaN(1,3);
+        %     dVf         = NaN(1,3); Ttraj = NaN;
+        % 
+        %     % ---------- nested event -----------------------------------------------
+        %     function [value,isterminal,direction] = eventStopAtXf(~,Xaug)
+        %         value      = Xaug(1) - xf_tar;  % stop when x = x_target
+        %         isterminal = 1;                 % halt
+        %         direction  = 0;
+        %     end
+        % end
+        % 
 
                 
         % ===============================================================
@@ -1010,9 +1331,281 @@ methods
                 end
          end     
 
-    %% .
-    %% .
-    %% .
+
+         % ===============================================================
+         %  Final-Velocity targeter – stop at location outside of a SOI
+         % ===============================================================
+         function [X0_optimized , dV0_opt , dVf , Ttraj , exit_flag , ...
+                 iter_count   , errHistory , iterLog , trajHistory , X0_hist , Xsoi_hist] = ...
+                 finalVelocityTargeter_OnSOI( ...
+                 obj, X0_start , dV_guess , v_target , mu , n , Rsoi_nd , ...
+                 Tmax , tolODE , tolErr , maxIter)
+             % ===============================================================
+             %  Velocity-only targeter at Earth SOI (direction + magnitude)
+             %  - Propagate in EM-CR3BP until crossing the Earth SOI sphere.
+             %  - Enforce hemisphere gate aligned with v_target direction.
+             %  - Correct initial velocity using linear map to final velocity.
+             %
+             %  Inputs
+             %    obj         : object exposing augmentedDynamicsCR3BP / dynamicsCR3BP
+             %    X0_start    : initial state [x y z vx vy vz] (nd)
+             %    dV_guess    : initial guess on ΔV at t0 (nd, 3x1 or 1x3)
+             %    v_target    : desired final velocity at SOI (nd, 3x1 or 1x3)
+             %    mu, n       : CR3BP parameters (mass ratio, mean motion)
+             %    Rsoi_nd     : Earth SOI radius in normalized units
+             %    Tmax        : maximum allowed propagation time
+             %    tolODE      : ODE tolerances (scalar used for RelTol=AbsTol)
+             %    tolErr      : convergence tolerance on ‖v_target - v_f‖
+             %    maxIter     : maximum correction iterations
+             %
+             %  Outputs
+             %    X0_optimized: optimized initial state [x y z vx vy vz]
+             %    dV0_opt     : net ΔV applied at t0 (nd, 1x3)
+             %    dVf         : residual ΔV at SOI (v_target - v_f) on exit
+             %    Ttraj       : time of flight to SOI
+             %    exit_flag   : 1 = converged, -1 = no convergence
+             %    iter_count  : number of iterations performed
+             %    errHistory  : ‖velocity error‖ per iteration
+             %    iterLog     : [iter, tf, rmag_gap, hem_ok, dvx, dvy, dvz, ...
+             %                   speed_err, ang_err_deg, errNorm, dVcorrNorm]
+             %    trajHistory : cell of [x y z vx vy vz t] (downsampled)
+             %    X0_hist     : [x0..vz0 t0] per iteration
+             %    Xsoi_hist   : [x y z vx vy vz tf hit hem_ok rmag_gap] per iteration
+             %
+             %  Notes
+             %   - Assumes standard EM-CR3BP synodic frame with Earth at r_E = [-mu,0,0].
+             %   - Hemisphere gate: r_rel·v_hat_target ≥ 0.
+             %   - Uses STM-based map: Ksoi = Φ_vv - (a_f r_fᵀ / (r_fᵀ v_f)) Φ_rv.
+             % ===============================================================
+
+             verbose     = false;
+             iter_count  = 0;
+             exit_flag   = 0;
+
+             errHistory  = [];
+             iterLog     = [];
+             trajHistory = {};
+             X0_hist     = [];
+             Xsoi_hist   = [];
+
+             if isrow(X0_start),  X0_start = X0_start.'; end
+             if isrow(dV_guess),  dV_guess = dV_guess.'; end
+             if isrow(v_target),  v_target = v_target.'; end
+
+             % Earth location in normalized synodic coords (m1 at [-mu,0,0])
+             rE = [-mu; 0; 0];
+
+             % Normalize desired velocity direction for hemisphere gate
+             vhat_req = v_target / max(norm(v_target), eps);
+
+             % Initialize the iterate
+             X0_optimized      = X0_start(1:6);
+             X0_optimized(4:6) = X0_optimized(4:6) + dV_guess(:);
+
+             % ODE options with SOI event and a small MaxStep to avoid root skipping
+             options = odeset('Events',@eventStopAtSOI,'RelTol',tolODE,'AbsTol',tolODE, ...
+                 'MaxStep', Tmax/2000);
+
+             % ===== Iteration loop =================================================
+             while iter_count < maxIter
+
+                 % Log the starting state for this iteration
+                 X0_hist(end+1,:) = [X0_optimized(:).'  0];
+
+                 % Propagate state + STM (6 + 36)
+                 [T, Xaug, TE, YE, ~] = ode45(@(t,X) obj.augmentedDynamicsCR3BP(t,X,mu,n), ...
+                     [0 Tmax] , [X0_optimized ; reshape(eye(6),36,1)] , ...
+                     options);
+
+                 % Downsample trajectory for history (≤500 pts)
+                 if numel(T) > 500
+                     idx = round(linspace(1,numel(T),500));
+                 else
+                     idx = 1:numel(T);
+                 end
+                 trajHistory{end+1,1} = [ Xaug(idx,1:6) , T(idx) ];
+
+                 % Extract final state and STM (prefer event)
+                 hit = ~isempty(TE);
+                 if hit
+                     tf     = TE(end);
+                     Xaug_f = YE(end,:);
+                 else
+                     tf     = T(end);
+                     Xaug_f = Xaug(end,:);
+                 end
+                 Xf     = Xaug_f(1:6).';
+                 Phi_tf = reshape(Xaug_f(7:end),6,6);
+
+                 rf     = Xf(1:3);       % barycentric position
+                 vf     = Xf(4:6);
+                 rf_rel = rf - rE;       % Earth-centered position for SOI event
+                 af     = obj.dynamicsCR3BP(0,Xf,mu,n);  % returns [ẋ ẏ ż v̇x v̇y v̇z]
+                 af     = af(4:6);
+
+                 % SOI diagnostics
+                 rmag_gap     = norm(rf_rel) - Rsoi_nd;
+                 hem_ok       = double(dot(rf_rel, vhat_req) >= 0);
+
+                 % --- Build K_soi = Φ_vv - (a_f r_f^T / (r_f^T v_f)) Φ_rv ------
+                 Phi_rv = Phi_tf(1:3,4:6);
+                 Phi_vv = Phi_tf(4:6,4:6);
+                 den    = dot(rf_rel, vf);
+                 if abs(den) < 1e-10
+                     den = sign(den + (den==0))*1e-10;  % regularize near-tangent condition
+                 end
+
+                 Ksoi = Phi_vv - (af * (rf_rel.'))/den * Phi_rv;
+
+                 % --- Velocity error (target - actual) --------------------------
+                 velErr  = (v_target - vf);
+                 errNorm = norm(velErr);
+                 errHistory(end+1,1) = errNorm;
+
+                 % Log the SOI hit state for this iteration
+                 Xsoi_hist(end+1,:) = [Xf(:).'  tf  double(hit)  hem_ok  rmag_gap];
+
+                 % Extra diagnostics (speed and angle errors)
+                 spd_err     = norm(vf) - norm(v_target);
+                 cosang      = dot(vf, v_target) / (max(norm(vf),eps)*max(norm(v_target),eps));
+                 ang_err_deg = real(acosd(max(-1,min(1,cosang))));
+
+                 if verbose
+                     fprintf('iter %3d  tf=%.6f  hit=%d  hem=%d  rgap=%.3e  |dV|=%.3e  spd_err=%.3e  ang=%.2f°\n', ...
+                         iter_count, tf, hit, hem_ok, rmag_gap, errNorm, spd_err, ang_err_deg);
+                 end
+
+                 % --- Convergence check -----------------------------------------
+                 if errNorm < tolErr && hit && hem_ok==1
+                     exit_flag  = 1;
+                     Ttraj      = tf;
+                     dVf        = (v_target - vf);                 % residual at SOI (should be ~0)
+                     dV0_opt    = (X0_optimized(4:6) - X0_start(4:6)).';  % row 1x3
+                     iterLog(end+1,:) = [iter_count, tf, rmag_gap, hem_ok, ...
+                         velErr(:).', spd_err, ang_err_deg, errNorm, NaN];
+                     return
+                 end
+
+                 % --- Solve least squares for ΔV correction ---------------------
+                 dVcorr = pinv(Ksoi) * velErr;
+
+                 % Apply and log
+                 X0_optimized(4:6) = X0_optimized(4:6) + dVcorr;
+                 iterLog(end+1,:)  = [iter_count, tf, rmag_gap, hem_ok, ...
+                     velErr(:).', spd_err, ang_err_deg, errNorm, norm(dVcorr)];
+
+                 iter_count = iter_count + 1;
+
+                 if verbose
+                     fprintf('iter %2d  ||err||=%.3e   ||ΔVcorr||=%.3e nd\n', iter_count, errNorm, norm(dVcorr));
+                 end
+             end
+
+             % ===== No convergence ===============================================
+             exit_flag    = -1;
+             X0_optimized = NaN(6,1);
+             dV0_opt      = [NaN NaN NaN];
+             dVf          = [NaN NaN NaN].';
+             Ttraj        = NaN;
+
+             % ---------- nested event: SOI sphere with hemisphere gate -----------
+             function [value, isterminal, direction] = eventStopAtSOI(~,Xaug)
+                 r  = Xaug(1:3);
+                 v  = Xaug(4:6);
+                 rr = r - rE;                        % Earth-centered
+                 value      = norm(rr) - Rsoi_nd;    % sphere
+                 % Gate: only terminate if on hemisphere aligned with vhat_req
+                 isterminal = double( dot(rr, vhat_req) >= 0 );   % 1(stop) or 0(ignore)
+                 direction  = 0;                     % any crossing
+             end
+         end
+
+
+         % ===============================================================         
+         %  Final-Velocity targeter – stop at location outside of a SOI (Wrapper)
+         % ===============================================================
+         function shot = runSOIVelocityShot(obj, cfg)
+             %RUNSOIVELOCITYSHOT  One-call SOI velocity targeting run.
+             %
+             % Required cfg fields:
+             %   obj.orb              : KeplerianOrbitalMechanicsLibrary instance
+             %   cfg.Xpre_nd          : 6x1 pre-burn CR3BP state in synodic (nd)
+             %   cfg.theta0           : synodic frame angle at burn epoch (rad)
+             %   cfg.V_dep_hci_kms    : 1x3 desired heliocentric S/C velocity at SOI (km/s)
+             %   cfg.rE0_km, cfg.vE0_km : Earth HCI state at burn epoch (km, km/s)
+             %   cfg.mu, cfg.n        : CR3BP parameters
+             %   cfg.Earth_soi_nd     : SOI radius (nd)
+             %   cfg.l_star, cfg.v_star : CR3BP scales
+             %
+             % Optional cfg fields (defaults shown):
+             %   cfg.Tmax_nd  (10*86400/(l_star/v_star))
+             %   cfg.tolODE   (1e-10)
+             %   cfg.tolErr   (1e-10)
+             %   cfg.maxIter  (50)
+             %   cfg.factorSOI(1.1)
+
+             % ---- required fields check
+             req = ["Xpre_nd","theta0","V_dep_hci_kms","rE0_km","vE0_km", ...
+                 "mu","n","Earth_soi_nd","l_star","v_star"];
+             for f = req
+                 assert(isfield(cfg,f), "runSOIVelocityShot: missing cfg.%s", f);
+             end
+
+             % ---- defaults
+             if ~isfield(cfg,'Tmax_nd'),   cfg.Tmax_nd   = 10*86400/(cfg.l_star/cfg.v_star); end
+             if ~isfield(cfg,'tolODE'),    cfg.tolODE    = 1e-10; end
+             if ~isfield(cfg,'tolErr'),    cfg.tolErr    = 1e-10; end
+             if ~isfield(cfg,'maxIter'),   cfg.maxIter   = 50;    end
+             if ~isfield(cfg,'factorSOI'), cfg.factorSOI = 1.1;   end
+
+             % ---- SOI point aligned with desired HCI velocity (visual + ω×r term)
+             vhat_HCI  = cfg.V_dep_hci_kms / norm(cfg.V_dep_hci_kms);
+             rSOI_HCI  = cfg.rE0_km + (cfg.Earth_soi_nd*cfg.l_star) * vhat_HCI;  % [km]
+
+             % HCI -> ECI: make a target *state* at SOI (needs position)
+             X_dep_ECI = obj.orb.hci2eci_knownEarthICs([rSOI_HCI cfg.V_dep_hci_kms], ...
+                 cfg.rE0_km, cfg.vE0_km);    % [rSOI v]_ECI
+
+             % ECI -> syn (nd) to get the correct rotating-frame velocity target
+             X_tar_syn  = obj.bci_to_syn([X_dep_ECI(1:3)/cfg.l_star, X_dep_ECI(4:6)/cfg.v_star], ...
+                 cfg.theta0, cfg.mu, 'primary');
+             v_target_nd = X_tar_syn(4:6).';   % 3x1
+
+             % Initial ΔV guess from patched conics: V∞ (ECI) -> syn (nd)
+             Vinf_eci_kms = cfg.V_dep_hci_kms - cfg.vE0_km;                % km/s
+             Xinf_syn     = obj.bci_to_syn([0 0 0 (Vinf_eci_kms/cfg.v_star)], ...
+                 cfg.theta0, cfg.mu, 'primary'); % r=0 at Earth
+             dv_guess_nd  = Xinf_syn(4:6).';
+
+             % ---- Call SOI velocity targeter
+             [X0_opt, dV0_opt_nd, dVf, Ttraj_SOI, flag, iters, errHist, ...
+                 iterLog, trajHist, X0_hist, Xsoi_hist] = ...
+                 obj.finalVelocityTargeter_OnSOI( ...
+                 cfg.Xpre_nd, dv_guess_nd, v_target_nd, ...
+                 cfg.mu, cfg.n, cfg.factorSOI*cfg.Earth_soi_nd, ...
+                 cfg.Tmax_nd, cfg.tolODE, cfg.tolErr, cfg.maxIter );
+
+             % ---- Pack scalar struct (force row vectors for convenience)
+             shot = struct();
+             shot.X0_opt       = X0_opt;
+             shot.dV0_opt_nd   = dV0_opt_nd(:).';
+             shot.dVf          = dVf(:).';
+             shot.Ttraj_SOI    = Ttraj_SOI;
+             shot.flag         = flag;
+             shot.iters        = iters;
+             shot.iterLog      = iterLog;
+             shot.trajHist     = trajHist;
+             shot.X0_hist      = X0_hist;
+             shot.Xsoi_hist    = Xsoi_hist;
+             shot.v_target_nd  = v_target_nd(:).';
+             shot.dv_guess_nd  = dv_guess_nd(:).';
+             shot.errHist      = errHist(:);
+         end
+
+     
+
+
+    %% ===============================================================
     %% 3.5) Targeters to Find Single Orbits
     
         % Perpendicular - XZ Plane Targeter Function - Fixed X0
@@ -1384,10 +1977,8 @@ methods
                     direction = 0;   % The zero can be approached from either direction
                 end
         end
-   
-    %% .
-    %% .
-    %% .
+       
+    %% ===============================================================    
     %% 3.6) Continuation Method to Find Families
     
         % Continuation Method - XZ Perpendicular Orbits - Fixed X0
@@ -1755,9 +2346,7 @@ methods
             fprintf('%d orbits were found with exit flag 1.\n', numOrbitsFound);
         end
  
-    %% .
-    %% .
-    %% .
+    %% ===============================================================
     %% 3.7) State Extraction
     
         % State Finder At Tau
@@ -1797,10 +2386,7 @@ methods
             % Subtract integer number of revolutions for taus greater than
             % or equal to 1
             taus = mod(taus, 1.0);
-
-            % Map tau == 0 to tau == 1.0 (end of period)
-            taus(taus == 0) = 1.0;
-
+                       
             % Convert taus to corresponding times in T
             times_at_taus = taus * max(T); % Max T is the orbit period
 
@@ -1815,10 +2401,7 @@ methods
             end
         end
 
-        
-    %% .
-    %% .
-    %% .
+    %% ===============================================================
     %% 3.8) Initial Conditions Guessers    
         % Initial DeltaV Guess Based on Pseudopotential and JC
         function [dV_mag, dV_dir, dV_vec] = estimateDeltaV0_LPOtoMoon(obj,X_start, X_end, factor, mu, n)            
@@ -1878,13 +2461,11 @@ methods
         end
     
         
-    %% |    
+
     %% ===============================================================
     %% 3.9) CONVERTERS
-        
-          %% ===============================================================
-          %% REFERENCE FRAME CONVERSIONS 
-          %% ===============================================================
+                  
+          %% 3.9.1) Reference Frame Conversions 
 
         % Sun-Centered Inertial Moon Vector to Synodic
         function [r_sm_B, r_sb_S, r_bm_S, r_sm_S] = sunToMoonSynodic(obj, t)
@@ -2455,11 +3036,8 @@ methods
                 end
             end
             
-
-            %% ===============================================================
-            %% DIMENSIONALITY CONVERSIONS 
-            %% ===============================================================
-
+            %% 3.9.2) Dimensionality Conversions
+            
             % ===============================================================
             %  State Non Dimensional to Dimensional  
             % ===============================================================
@@ -2591,19 +3169,13 @@ methods
                 end
             end
 
-
-
-        %% ===============================================================
-        %% UNITS CONVERSISONS
-        %% ===============================================================
-     
         
 
-      %% |         
-      %% ===============================================================
-      %% 3.10) ESSENTIAL CR3BP VALUES
-      %% ===============================================================
-    
+
+            %% ===============================================================
+            %% 3.10) Essential CR3BP Values
+
+
         % Jacobians [ A ] Matrix : Jacobian A = df/dx
         function [A] = dynamicsJacobianA(obj, x, y, z, mu)    
          % A_dynamicsJacobian calculates the Jacobian matrix of the CR3BP
@@ -2749,102 +3321,313 @@ methods
                 Ustar(i) = (1 - mu) / r1 + mu / r2 + 0.5 * n^2 * (x^2 + y^2);
             end
         end
-        
+
         % Jacobi Constant, Mean and Standard Deviation
         function [JC, JC_mean, JC_std] = jacobiConstantCR3BP(obj,X, mu, n)
             % jacobiConstantCR3BP Calculates the Jacobi Constant for a set
             % of state vectors in the Circular Restricted Three-Body
             % Problem (CR3BP).
-                %
-                % Usage:
-                %   [JC, JC_mean, JC_std] = obj.jacobiConstantCR3BP(X, mu,
-                %   n)
-                %
-                % Inputs:
-                %   X - A row or col vector, or a matrix of state vectors
-                %   where each row is a state vector [x, y, z, vx, vy, vz].
-                %       X can represent multiple initial conditions from
-                %       different orbits or a propagation of a single orbit
-                %       over time.
-                %   mu - Gravitational parameter of the CR3BP, representing
-                %   the mass ratio of the two primary bodies. n - Mean
-                %   motion (average angular velocity), typically set to 1
-                %   in normalized units.
-                %
-                % Outputs:
-                %   JC - Vector of Jacobi Constant values calculated for
-                %   each input state vector. JC_mean - Mean value of the
-                %   Jacobi Constant across all input state vectors. JC_std
-                %   - Standard deviation of the Jacobi Constant across all
-                %   input state vectors.
-                %
-                % The function computes the Jacobi Constant, a scalar
-                % quantity that is conserved along any trajectory in the
-                % CR3BP, for each provided state vector. It can be used to
-                % analyze the stability and feasibility of orbits by
-                % examining how the Jacobi Constant varies over time for a
-                % single orbit or across different initial conditions for
-                % multiple orbits. The mean and standard deviation of the
-                % calculated Jacobi Constants provide insights into the
-                % overall dynamics and variability of the system or orbit
-                % being studied.
-                %
-                % Example:
-                %   mu = 0.01215058162343; % Earth-Moon CR3BP n = 1; % By
-                %   definition in CR3BP normalized units X = [0.8, 0, 0, 0,
-                %   0.1, 0; 0.81, 0, 0, 0, 0.105, 0]; % Two different
-                %   initial conditions [JC, JC_mean, JC_std] =
-                %   obj.jacobiConstantCR3BP(X, mu, n); This calculates the
-                %   Jacobi Constant for two different initial conditions
-                %   and returns the mean and standard deviation of both
-                %   JCs.
-            
-            
+            %
+            % Usage:
+            %   [JC, JC_mean, JC_std] = obj.jacobiConstantCR3BP(X, mu,
+            %   n)
+            %
+            % Inputs:
+            %   X - A row or col vector, or a matrix of state vectors
+            %   where each row is a state vector [x, y, z, vx, vy, vz].
+            %       X can represent multiple initial conditions from
+            %       different orbits or a propagation of a single orbit
+            %       over time.
+            %   mu - Gravitational parameter of the CR3BP, representing
+            %   the mass ratio of the two primary bodies. n - Mean
+            %   motion (average angular velocity), typically set to 1
+            %   in normalized units.
+            %
+            % Outputs:
+            %   JC - Vector of Jacobi Constant values calculated for
+            %   each input state vector. JC_mean - Mean value of the
+            %   Jacobi Constant across all input state vectors. JC_std
+            %   - Standard deviation of the Jacobi Constant across all
+            %   input state vectors.
+            %
+            % The function computes the Jacobi Constant, a scalar
+            % quantity that is conserved along any trajectory in the
+            % CR3BP, for each provided state vector. It can be used to
+            % analyze the stability and feasibility of orbits by
+            % examining how the Jacobi Constant varies over time for a
+            % single orbit or across different initial conditions for
+            % multiple orbits. The mean and standard deviation of the
+            % calculated Jacobi Constants provide insights into the
+            % overall dynamics and variability of the system or orbit
+            % being studied.
+            %
+            % Example:
+            %   mu = 0.01215058162343; % Earth-Moon CR3BP n = 1; % By
+            %   definition in CR3BP normalized units X = [0.8, 0, 0, 0,
+            %   0.1, 0; 0.81, 0, 0, 0, 0.105, 0]; % Two different
+            %   initial conditions [JC, JC_mean, JC_std] =
+            %   obj.jacobiConstantCR3BP(X, mu, n); This calculates the
+            %   Jacobi Constant for two different initial conditions
+            %   and returns the mean and standard deviation of both
+            %   JCs.
+
+
             % - - - - Sanity Check on Vector or Matrix X - - - -
-                if isvector(X) && length(X) < 6             % Check if X is a vector with correct dimensions
-                    error('Incomplete state vector provided. Each state vector must have 6 or 7 elements.');
-                end
-            
-                if iscolumn(X)                              % If X is column vector
-                    X = X';                                 % Transpose to row vector 
-                end
-                
-                if  ismatrix(X) && (size(X, 2) < 6 || size(X, 2) > 7)            % If X is a matrix with columns less than 6
-                    error('Incomplete state vectors provided. Each state vector in the matrix must have 6 or 7 elements (cols).');
-                end
-                    
-                X = X(:,1:6);                              % We are interested in the 1st 6 cols of X only 
-                
+            if isvector(X) && length(X) < 6             % Check if X is a vector with correct dimensions
+                error('Incomplete state vector provided. Each state vector must have 6 or 7 elements.');
+            end
+
+            if iscolumn(X)                              % If X is column vector
+                X = X';                                 % Transpose to row vector
+            end
+
+            if  ismatrix(X) && (size(X, 2) < 6 || size(X, 2) > 7)            % If X is a matrix with columns less than 6
+                error('Incomplete state vectors provided. Each state vector in the matrix must have 6 or 7 elements (cols).');
+            end
+
+            X = X(:,1:6);                              % We are interested in the 1st 6 cols of X only
+
             % - - - -  Initialization of outputs - - - -
-                rows = size(X, 1);                          % Number of timesteps in the input matrix
-                JC = zeros(rows, 1); 
-            
+            rows = size(X, 1);                          % Number of timesteps in the input matrix
+            JC = zeros(rows, 1);
+
             % - - - - Compute JC for each iteration - - - -
             for i = 1:rows
                 % Extract the state values from the current row
                 x = X(i, 1);  y = X(i, 2);   z = X(i, 3);
                 vx = X(i, 4); vy = X(i, 5); vz = X(i, 6);
-                v = norm([vx, vy, vz], 2);               % Magnitude of the velocity 
-        
+                v = norm([vx, vy, vz], 2);               % Magnitude of the velocity
+
                 % Calculate distances to the primary (r1) and secondary
                 % (r2) bodies
                 r1 = sqrt((x + mu)^2 + y^2 + z^2);      % Distance to the primary body a.k.a as d
                 r2 = sqrt((x - 1 + mu)^2 + y^2 + z^2);  % Distance to the secondary body a.k.a as r
-        
+
                 Ustar = (1 - mu) / r1 + mu / r2 + 0.5 * n^2 * (x^2 + y^2);
-        
+
                 JC(i) = 2 * Ustar - v^2;            % Calculate the JC value
             end
-        
+
             % Calculate mean and standard deviation of the Jacobi constants
             % as ref
             JC_mean = mean(JC);
             JC_std = std(JC);
         end
 
-    %% .
-   
-        
+
+
+        function [mu, Mtot, Tstar_s, P_s, Vstar_km_s] = cr3bp_characteristics(obj, m1, m2, a_km)
+            % cr3bp_characteristics  Characteristic quantities for a CR3BP system.
+            %
+            % Units:
+            %   - m1, m2 in kilograms [kg]
+            %   - a_km  in kilometers [km]
+            %
+            % Computes:
+            %   mu          = m2/(m1+m2)                          (mass ratio, nondimensional)
+            %   Mtot        = (m1+m2)                             (total mass, kg)
+            %   Tstar_s     = sqrt(a^3/(G*Mtot))                  (characteristic time, s)
+            %   P_s         = 2*pi*Tstar_s                        (characteristic period, s)
+            %   Vstar_km_s  = sqrt(G*Mtot/a) = a/Tstar_s          (characteristic velocity, km/s)
+            %
+            % Usage:
+            %   [mu, Mtot, Tstar_s, P_s, Vstar_km_s] = cr3bp_characteristics(m1, m2, a_km)
+            %
+            % Notes:
+            %   - All inputs can be scalars or equally sized arrays (element-wise ops).
+            %   - Errors if masses are negative, m1+m2==0, or a_km<=0.
+
+            % Gravitational constant in km^3/(kg·s^2)
+            G_km = 6.67430e-20;
+
+            % Basic validation
+            if any(m1(:) < 0) || any(m2(:) < 0)
+                error('cr3bp_characteristics:NegativeMass','m1 and m2 must be nonnegative.');
+            end
+            if any(a_km(:) <= 0)
+                error('cr3bp_characteristics:NonpositiveSeparation','a_km must be > 0.');
+            end
+
+            Mtot = m1 + m2;
+            if any(Mtot(:) == 0)
+                error('cr3bp_characteristics:ZeroTotalMass','m1 + m2 must be > 0.');
+            end
+
+            mu         = m2 ./ Mtot;
+            Tstar_s    = sqrt( (a_km.^3) ./ (G_km .* Mtot) );
+            P_s        = 2*pi*Tstar_s;
+
+            % Characteristic velocity: v* = a / T* = sqrt(G*M / a)
+            Vstar_km_s = sqrt( (G_km .* Mtot) ./ a_km );
+        end
+
+
+
+        %% ===============================================================
+        %% 3.11) Lagrange Equilibrium Points L1, L2, L3 
+
+
+
+        function out = getL1L2L3(obj, name, m1, m2, a_km, tol, maxit, verbose)
+            % getL1L2L3  Solve for L1, L2, L3 locations and residual checks (CR3BP).
+            % Usage:
+            %   out = obj.getL1L2L3(name, m1, m2, a_km)
+            %   out = obj.getL1L2L3(name, m1, m2, a_km, tol, maxit, verbose)
+            %
+            % Inputs
+            %   name   : char label for console prints (e.g., 'Earth–Moon')
+            %   m1,m2  : primary masses [kg]  (m2 is the smaller body by convention)
+            %   a_km   : primary separation a* [km]
+            %   tol    : NR step tolerance on gamma (default 1e-13)
+            %   maxit  : NR max iterations (default 100)
+            %   verbose: true to print a short report (default true)
+            %
+            % Requires the following methods in the same class:
+            %   [gamma, iters] = obj.L1gammaNR(g0, mu, tol, maxit)
+            %   [gamma, iters] = obj.L2gammaNR(g0, mu, tol, maxit)
+            %   [gamma, iters] = obj.L3gammaNR(g0, mu, tol, maxit)
+
+            if nargin < 7 || isempty(maxit),   maxit   = 100;     end
+            if nargin < 6 || isempty(tol),     tol     = 1e-13;   end
+            if nargin < 8 || isempty(verbose), verbose = true;    end
+
+            % --- Mass ratio
+            mu = m2/(m1+m2);
+
+            % --- NR starting guesses (robust, system-agnostic)
+            g2_0 = max(1e-12, (mu/3)^(1/3));   % L2 (to the right of small body)
+            g1_0 = min(0.9,    max(1e-8,(mu/3)^(1/3))); % L1 (between primaries)
+            g3_0 = 1 + (5/12)*mu;              % L3 (left of large body)
+
+            % --- Solve quintics by Newton–Raphson (using class methods)
+            [g1, it1] = obj.L1gammaNR(g1_0, mu, tol, maxit);
+            [g2, it2] = obj.L2gammaNR(g2_0, mu, tol, maxit);
+            [g3, it3] = obj.L3gammaNR(g3_0, mu, tol, maxit);
+
+            % --- Barycentric x-locations (nondimensional)
+            xL1_nd = 1 - mu - g1;
+            xL2_nd = 1 - mu + g2;
+            xL3_nd = -mu - g3;
+
+            % --- Dimensional x-locations [km]
+            xL1_km = xL1_nd * a_km;
+            xL2_km = xL2_nd * a_km;
+            xL3_km = xL3_nd * a_km;
+
+            % --- Distances from relevant primary [km] and % of a*
+            dSmall_to_L1_km = g1 * a_km;   pctL1 = 100*g1;
+            dSmall_to_L2_km = g2 * a_km;   pctL2 = 100*g2;
+            dLarge_to_L3_km = g3 * a_km;   pctL3 = 100*g3;
+
+            % --- Raw residuals (no scaling)
+            r1 = fL1(g1,mu);
+            r2 = fL2(g2,mu);
+            r3 = fL3(g3,mu);
+
+            % --- Package outputs
+            out.name  = string(name);
+            out.mu    = mu;
+
+            out.gamma1 = g1;  out.it1 = it1;
+            out.gamma2 = g2;  out.it2 = it2;
+            out.gamma3 = g3;  out.it3 = it3;
+
+            out.xL1_nd = xL1_nd;  out.xL1_km = xL1_km;
+            out.xL2_nd = xL2_nd;  out.xL2_km = xL2_km;
+            out.xL3_nd = xL3_nd;  out.xL3_km = xL3_km;
+
+            out.dSmall_to_L1_km = dSmall_to_L1_km;  out.pctL1 = pctL1;
+            out.dSmall_to_L2_km = dSmall_to_L2_km;  out.pctL2 = pctL2;
+            out.dLarge_to_L3_km = dLarge_to_L3_km;  out.pctL3 = pctL3;
+
+            out.residuals.fL1 = r1;
+            out.residuals.fL2 = r2;
+            out.residuals.fL3 = r3;
+
+            % --- Optional console report
+            if verbose
+                fprintf('%s\n', name);
+                fprintf('  mu = %.9g\n', mu);
+
+                fprintf('  L1: gamma1=%.12g  x(nd)=%.12g  x(km)=%.6f   it=%d\n', g1, xL1_nd, xL1_km, it1);
+                fprintf('      |f_{L1}(gamma1)| = %.3e\n', abs(r1));
+
+                fprintf('  L2: gamma2=%.12g  x(nd)=%.12g  x(km)=%.6f   it=%d\n', g2, xL2_nd, xL2_km, it2);
+                fprintf('      |f_{L2}(gamma2)| = %.3e\n', abs(r2));
+
+                fprintf('  L3: gamma3=%.12g  x(nd)=%.12g  x(km)=%.6f   it=%d\n', g3, xL3_nd, xL3_km, it3);
+                fprintf('      |f_{L3}(gamma3)| = %.3e\n\n', abs(r3));
+            end
+
+            % ===== local helpers: exact quintic polynomials (raw residuals) =====
+            function f = fL1(g,mu)
+                f = g.^5 + (mu-3).*g.^4 + (3-2*mu).*g.^3 - mu.*g.^2 + 2*mu.*g - mu;
+            end
+            function f = fL2(g,mu)
+                f = g.^5 + (3-mu).*g.^4 + (3-2*mu).*g.^3 - mu.*g.^2 - 2*mu.*g - mu;
+            end
+            function f = fL3(g,mu)
+                f = g.^5 + (mu+2).*g.^4 + (2*mu+1).*g.^3 + (mu-1).*g.^2 + (2*mu-2).*g + (mu-1);
+            end
+
+        end
+
+     
+
+        % ----- Newton–Raphson for L1:  f(g)=0 with derivative f'(g) -----
+        % f_L1(g) = g^5 + (mu-3)g^4 + (3-2mu)g^3 - mu g^2 + 2mu g - mu
+        % f'_L1(g)= 5g^4 + 4(mu-3)g^3 + 3(3-2mu)g^2 - 2mu g + 2mu
+        function [gamma, iters] = L1gammaNR(obj, g0, mu, tol, maxit)
+            g = g0; iters = 0;
+            for k = 1:maxit
+                f  = g^5 + (mu-3)*g^4 + (3-2*mu)*g^3 - mu*g^2 + 2*mu*g - mu;
+                df = 5*g^4 + 4*(mu-3)*g^3 + 3*(3-2*mu)*g^2 - 2*mu*g + 2*mu;
+                step = f/df;
+                gnew = g - step;
+                iters = k;
+                if abs(gnew - g) < tol, g = gnew; break; end
+                g = gnew;
+            end
+            gamma = g;
+        end
+
+        function [gamma, iters] = L2gammaNR(obj, gamma0, mu, tol, maxit)
+            % Newton–Raphson for the L2 quintic:
+            % f(g) = g^5 + (3-mu)g^4 + (3-2mu)g^3 - mu*g^2 - 2mu*g - mu = 0
+
+            g  = gamma0;
+            it = 0;
+            while it < maxit
+                f  = g^5 + (3-mu)*g^4 + (3-2*mu)*g^3 - mu*g^2 - 2*mu*g - mu;
+                df = 5*g^4 + 4*(3-mu)*g^3 + 3*(3-2*mu)*g^2 - 2*mu*g - 2*mu;
+                gnew = g - f/df;
+                it = it + 1;
+                if abs(gnew - g) < tol
+                    g = gnew;
+                    break
+                end
+                g = gnew;
+            end
+            gamma = g;
+            iters = it;
+        end
+
+        % ----- Newton–Raphson for L3:  f(g)=0 with derivative f'(g) -----
+        % f_L3(g) = g^5 + (mu+2)g^4 + (2mu+1)g^3 + (mu-1)g^2 + (2mu-2)g + (mu-1)
+        % f'_L3(g)= 5g^4 + 4(mu+2)g^3 + 3(2mu+1)g^2 + 2(mu-1)g + (2mu-2)
+        function [gamma, iters] = L3gammaNR(obj, g0, mu, tol, maxit)
+            g = g0; iters = 0;
+            for k = 1:maxit
+                f  = g^5 + (mu+2)*g^4 + (2*mu+1)*g^3 + (mu-1)*g^2 + (2*mu-2)*g + (mu-1);
+                df = 5*g^4 + 4*(mu+2)*g^3 + 3*(2*mu+1)*g^2 + 2*(mu-1)*g + (2*mu-2);
+                step = f/df;
+                gnew = g - step;
+                iters = k;
+                if abs(gnew - g) < tol, g = gnew; break; end
+                g = gnew;
+            end
+            gamma = g;
+        end
 
 
 end

@@ -263,7 +263,7 @@ classdef PlotterLibrary
             addParameter(p,'MaxFrames',1500,@isnumeric);   % smoother skip logic
             addParameter(p,'TopDown',false,@islogical);   % new switch
 
-
+        
             parse(p,bodies,central,mu_central,animate,varargin{:});
             
 
@@ -540,9 +540,9 @@ classdef PlotterLibrary
         end
 
         %–––––––––––––––––––– helper ––––––––––––––––––––––––––––––––––––––
-        function out = iff(obj, cond,a,b)
-            if cond, out = a; else out = b; end
+        function y = iff(obj,c,a,b), if c, y=a; else, y=b; end
         end
+
 
     
     end
