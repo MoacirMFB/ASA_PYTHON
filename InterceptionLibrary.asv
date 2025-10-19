@@ -229,7 +229,7 @@ classdef InterceptionLibrary
 
 
         %%  --- TYPE 1 ANALYSIS: Single Transfer Performance ---
-        function [perf, XE_post, XA_post, XA_nom] = computeSingleCasePerformance(obj, bodies, best, depMBI, arrMBI, asteroids, kAst, odeOpt, dt_min)
+        function [perf, XE_post, XA_post] = computeSingleCasePerformance(obj, bodies, best, depMBI, arrMBI, asteroids, kAst, odeOpt, dt_min)
             % computeSingleCasePerformance  Single-case metrics + post-intercept ΔMOID/ΔCA.
             %
             %   perf = computeSingleCasePerformance(bodies, best, depMBI, intMBI, TOF_sec, asteroids, kAst)
@@ -255,8 +255,8 @@ classdef InterceptionLibrary
             %   DeltaCA_RE    [-]        (= (CA_post−CA_pre)/R_E)
 
             % ---------------- constants (hardcoded) ----------------
-            SAFETY = 2;                     % fixed safety factor for post-intercept time propagation            
-            dt_s   = dt_min * 60;
+            SAFETY    = 1.5;                     % fixed safety factor for post-intercept time propagation            
+            dt_s  = dt_min * 60;
             
 
             % ---------------- times ------------
@@ -291,12 +291,8 @@ classdef InterceptionLibrary
             IC_Apost   = bodies{4}.X_hist(idxIntercept,:).';                 % Asteroid's IC post intercept epoch
 
             % 4) prop Earth & post-int ast on the same long tspan for kick's perf analysis
-            [~, XE_post] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), tspan_post_perf, IC_Epost, odeOpt);
+            [~, XE_post] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), tspan_post_perf, IC_Epost,  odeOpt);
             [~, XA_post] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), tspan_post_perf, IC_Apost, odeOpt);
-
-            % --- also propagate the nominal (no-kick) asteroid forward on the same grid
-            IC_A_nom = bodies{2}.X_hist(idxIntercept,:).';
-            [~, XA_nom] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), tspan_post_perf, IC_A_nom, odeOpt);
 
             % 5) compute CA and MOID post-impact, then normalize by R_E
             [CA_post, MOID_post] = obj.get_CA_MOID(XE_post, XA_post, tspan_post_perf, tspan_post_perf);
@@ -308,8 +304,6 @@ classdef InterceptionLibrary
             perf.DeltaCA_RE   = (CA_post  .d_km - baseCA  ) / obj.R_EARTH_KM;
             perf.MOID_post = MOID_post;
             perf.CA_post = CA_post;
-
-            % checked
         end
 
 
@@ -550,7 +544,7 @@ classdef InterceptionLibrary
             %   best                Lambert result (uses .VF for nominal relative-velocity direction)
             %   tf_MBI              months-before-impact at intercept (for "time-to-impact")
             %   a_AU                asteroid semi-major axis (AU)  ← used for period & SAFETY sizing
-            %   odeOpt              odeset; default high accuracy
+            %   odeOpt   (opt)      odeset; default high accuracy
             %
             % Outputs
             %   DeltaCA_RE   [nD×nM]  (CA_post  − CA_pre ) / R_E
@@ -560,6 +554,10 @@ classdef InterceptionLibrary
             %   • The post-intercept window is sized as: max( tf_MBI*30*86400 , SAFETY * T_ast )
             %     with SAFETY = 1.5 and T_ast = 2π√(a_AU^3/μ_sun_AU). Both CA and MOID are
             %     recomputed after full re-propagation on this window.
+
+            if nargin < 11 || isempty(odeOpt)
+                odeOpt = odeset('RelTol',1e-13,'AbsTol',1e-13);
+            end
 
             % ---------- constants ----------
             ER_km   = obj.R_EARTH_KM;     % Earth radius [km]
@@ -1288,15 +1286,13 @@ classdef InterceptionLibrary
         end
 
 
-        function plotEarthCentered(obj, bodies, perf, XE_post, XA_post)
+        function plotEarthCentered(obj, bodies, perf, XE_post, XA_post, astName)
             % PLOTEARTHCENTERED  Earth-centered visualization of nominal/post-impact asteroid.
             %
             %   obj.plotEarthCentered(bodies, perf, XE_post, XA_post, astName)
             %
             % Notes:
             %   - Ensures astName is a scalar (char) to avoid plot3 DisplayName errors.
-
-            astName = bodies{2}.name;
 
             % --- normalize astName to a scalar char ---
             if isstring(astName)

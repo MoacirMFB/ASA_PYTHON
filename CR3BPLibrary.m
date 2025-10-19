@@ -786,12 +786,7 @@ methods
             % ---------- Plot ----------
             h.fig = figure('Color','w');
             h.ax  = axes('NextPlot','add'); grid(h.ax,'on'); box(h.ax,'on'); axis(h.ax,'equal');
-
-            % Forbidden region (2U* - C0 < 0) -> Cgrid < C0
-            clim = [min(Cgrid(:)) C0];
-            h.hForbidden = contourf(h.ax, X, Y, Cgrid, clim, 'LineStyle','none');
-            colormap(h.ax, [0.95 0.95 0.95]);
-
+           
             % ZVC boundary Cgrid = C0
             h.hZVC = contour(h.ax, X, Y, Cgrid, [C0 C0], 'k', 'LineWidth', 1.8);
 
@@ -820,7 +815,7 @@ methods
             xlim(h.ax, xlims); ylim(h.ax, ylims);
             xlabel(h.ax, 'x (nd)'); ylabel(h.ax, 'y (nd)');
             title(h.ax, sprintf('ZVC for C = %.12f   (CR3BP, nd)', C0));
-            legend(h.ax, {'Forbidden region','ZVC (v=0)','Earth','Moon','L-points','IC'}, ...
+            legend(h.ax, {'ZVC (v=0)','Earth','Moon','L-points','IC'}, ...
                 'Location','bestoutside');
 
         end
@@ -3465,7 +3460,6 @@ methods
 
         %% ===============================================================
         %% 3.11) Lagrange Equilibrium Points L1, L2, L3 
-
 
 
         function out = getL1L2L3(obj, name, m1, m2, a_km, tol, maxit, verbose)
