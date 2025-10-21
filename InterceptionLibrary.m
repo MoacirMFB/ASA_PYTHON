@@ -227,78 +227,81 @@ classdef InterceptionLibrary
 
 
 
+        %  --- TYPE 1 ANALYSIS: Single Transfer Performance  ---
+        function [perf, XE_post, XA_post, XA_nom] = ...
+                computeSingleCasePerformance(obj, bodies, cfgPostInt, best, depMBI, arrMBI, asteroids, kAst, ...
+                odeOpt, dt_min)
+            % SIMPLE version:
+            % - bodies = {Earth, Ast(pre), Interceptor} with histories only up to the interception (TOF)
+            % - No post body provided; we create the post-impact asteroid IC here
+            % - Propagate Earth, Ast(post), and Ast(nominal) on the same long tspan for CA/MOID
 
-        %%  --- TYPE 1 ANALYSIS: Single Transfer Performance ---
-        function [perf, XE_post, XA_post, XA_nom] = computeSingleCasePerformance(obj, bodies, best, depMBI, arrMBI, asteroids, kAst, odeOpt, dt_min)
-            % computeSingleCasePerformance  Single-case metrics + post-intercept ΔMOID/ΔCA.
-            %
-            %   perf = computeSingleCasePerformance(bodies, best, depMBI, intMBI, TOF_sec, asteroids, kAst)
-            %   perf = computeSingleCasePerformance(..., odeOpt)
-            %
-            % Inputs
-            %   bodies     {Earth, Ast(pre), Interceptor, Ast(post)}, each with:
-            %              .t_hist [N×1] (s), .X_hist [N×6] (km, km/s)
-            %   best       Lambert result with fields: .dV [km/s], .VF [3×1 km/s]
-            %   depMBI     departure lead time (months-before-impact)
-            %   arrMBI     interception lead time (months-before-impact)
-            %   TOF_sec    launch→intercept time of flight [s]
-            %   asteroids  cell; asteroids{kAst}.coe(1)=a_AU, .MOID_pre_km, .CA_pre_km
-            %   kAst       index into asteroids for the current target
-            %   odeOpt     (optional) odeset; defaults RelTol=AbsTol=1e-13
-            %
-            % Output (perf struct)
-            %   Vinf          [km/s]
-            %   DVint         [km/s]
-            %   theta         [deg]
-            %   R1            [-]        (= TOF / TLI)
-            %   DeltaMOID_RE  [-]        (= (MOID_post−MOID_pre)/R_E)
-            %   DeltaCA_RE    [-]        (= (CA_post−CA_pre)/R_E)
-
-            % ---------------- constants (hardcoded) ----------------
-            SAFETY = 2;                     % fixed safety factor for post-intercept time propagation            
+            % --------------- constants ---------------
+            SAFETY = 2;                       % post window safety factor vs asteroid period
             dt_s   = dt_min * 60;
-            
 
-            % ---------------- times ------------
-            TLI_sec   =  depMBI           * 30 * 86400;                     % time left from sc launch to ast impact with Earth [s]
-            TOF_sec   = (depMBI - arrMBI) * 30 * 86400;                     % time from dep to ast interception              [s]
+            % --------------- times (sec) -------------
+            TLI_sec =  depMBI           * 30 * 86400;     % launch → Earth impact
+            TOF_sec = (depMBI - arrMBI) * 30 * 86400;     % launch → intercept
 
-            % ---------------- some perf output at interception (ΔVlaunch, ΔVint, θ, R1) ------------
+            tImpact =  arrMBI           * 30 * 86400;   % intercept → (nominal) Earth-impact
+
+
+            % --------------- basic perf at intercept --
             perf.Vinf = best.dV;
 
-            idxIntercept  = find(bodies{2}.t_hist >= TOF_sec, 1, 'first');        % idx of the intercept 
+            % XA_nom_int = bodies{2}.X_hist(end,:);
+            XA_nom_int = cfgPostInt.Xast_nom_int;
+            Xsc_int = bodies{3}.X_hist(end,:);
 
-            % at the int 
-            vAst_nom_int = bodies{2}.X_hist(idxIntercept,4:6).';                  % nominal ast vel at intercept [km/s]
+            rA_nom_int = XA_nom_int(1:3).';   rA_nom_int = rA_nom_int(:);
+            rSC_int  = Xsc_int(end,1:3);  rSC_int   = rSC_int(:);
 
-            perf.DVint = norm(vAst_nom_int - best.VF);                      % rel vel mag btwn sc and ast at int [km/s]
-            perf.theta = real(acosd( dot(best.VF,vAst_nom_int) / (norm(best.VF)*norm(vAst_nom_int)) ));  % angle btwn ast and sc vel vectors at intercept
+            % --------------- sanity check: SC meets Ast at intercept ---------------
 
-            perf.R1 = 1 - TOF_sec / TLI_sec;
+            if norm(rA_nom_int - rSC_int) > 1e-3
+                warning('SC and nominal asteroid positions differ at intercept (||Δr|| = %.3g km).', ...
+                    norm(rA_nom_int - rSC_int));
+            end
 
-            % ---------------- ΔMOID / ΔCA (post-intercept) ------------------------
-            % 1) choose post window: max(1 yr, SAFETY × asteroid period)
-            T_Earth = 365.25 * 86400;                          % 1 Earth year in [s]
-            a_AU    = asteroids{kAst}.coe(1);                  % ast sma [AU]
-            T_ast   = 2*pi*sqrt(a_AU^3 / obj.MU_SUN_AU);       % ast period [s]
-            T_end   = max(T_Earth, SAFETY * T_ast);            % grab biggest period for fwd prop
 
-            % 2) create big-enough timespan from intercept fwd to compute MOID and CA
+            % --------------- Get asteroid state post intercept from bodies -----------------
+            IC_Apost = bodies{4}.X_hist(1,:);
+
+            % --------------- Earth and asteroid states at intercept -----------------
+            IC_Epost      = bodies{1}.X_hist(end,:).';         % Earth state @ intercept
+            vAst_nom_int  = bodies{2}.X_hist(end,4:6).';       % nominal asteroid vel @ intercept [km/s]
+
+            % Relative velocity spacecraft vs asteroid at intercept (for reporting)
+            perf.DVint = norm(vAst_nom_int - best.VF);
+            perf.theta = real(acosd( dot(best.VF, vAst_nom_int) / (norm(best.VF)*norm(vAst_nom_int)) ));
+            perf.R1    = 1 - TOF_sec / TLI_sec;
+
+            % --------------- choose post window (long enough for CA/MOID) -----------
+            T_need  = arrMBI * 30 * 86400;                   % intercept → Earth-impact (nominal)
+            T_Earth = 365.25 * 86400;                        % 1 yr
+            a_AU    = asteroids{kAst}.coe(1);
+            T_ast   = 2*pi*sqrt(a_AU^3 / obj.MU_SUN_AU);      % asteroid period [s]
+            T_end   = SAFETY * max([T_need, SAFETY*T_ast, T_Earth]);     % cover impact + give some safety room
+
             tspan_post_perf = 0 : dt_s : T_end;
 
-            % 3) Earth and kicked Ast state at the intercept time            
-            IC_Epost   = bodies{1}.X_hist(idxIntercept,:).';                 % Earth's IC post intercept epoch
-            IC_Apost   = bodies{4}.X_hist(idxIntercept,:).';                 % Asteroid's IC post intercept epoch
+            % --------------- propagate on common post grid --------------------------
 
-            % 4) prop Earth & post-int ast on the same long tspan for kick's perf analysis
-            [~, XE_post] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), tspan_post_perf, IC_Epost, odeOpt);
-            [~, XA_post] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), tspan_post_perf, IC_Apost, odeOpt);
+            % Earth from IC_Epost
+            [~, XE_post] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), ...
+                tspan_post_perf, IC_Epost, odeOpt);
 
-            % --- also propagate the nominal (no-kick) asteroid forward on the same grid
-            IC_A_nom = bodies{2}.X_hist(idxIntercept,:).';
-            [~, XA_nom] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), tspan_post_perf, IC_A_nom, odeOpt);
+            % Asteroid (post intercept)
+            [~, XA_post] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), ...
+                tspan_post_perf, IC_Apost, odeOpt);
 
-            % 5) compute CA and MOID post-impact, then normalize by R_E
+            % Asteroid (nominal/no kick) for comparison
+            IC_A_nom = bodies{2}.X_hist(end,:).';
+            [~, XA_nom]  = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), ...
+                tspan_post_perf, IC_A_nom, odeOpt);
+
+            % --------------- CA & MOID (post) ---------------------------------------
             [CA_post, MOID_post] = obj.get_CA_MOID(XE_post, XA_post, tspan_post_perf, tspan_post_perf);
 
             baseMOID = asteroids{kAst}.MOID_pre_km;
@@ -306,11 +309,11 @@ classdef InterceptionLibrary
 
             perf.DeltaMOID_RE = (MOID_post.d_km - baseMOID) / obj.R_EARTH_KM;
             perf.DeltaCA_RE   = (CA_post  .d_km - baseCA  ) / obj.R_EARTH_KM;
-            perf.MOID_post = MOID_post;
-            perf.CA_post = CA_post;
-
-            % checked
+            perf.MOID_post    = MOID_post;
+            perf.CA_post      = CA_post;
         end
+
+
 
 
         %% --- TYPE 2 ANALYSIS : Sweep Departure and Arrival Times vs Spacecraft Mass ---
@@ -799,7 +802,10 @@ classdef InterceptionLibrary
             [varargout{1:nargout}] = lambert(varargin{:});
         end
 
-        %% --- CA and MOID ---
+
+
+
+
         function [CA, MOID] = get_CA_MOID(obj, EarthStates, AstStates, timeE, timeA)
             % get_CA_MOID  Compute time-synced closest approach and global MOID
             %
@@ -837,6 +843,7 @@ classdef InterceptionLibrary
             % -------------------------------------------------------------------------
             % 1) time-synced closest approach  (vectorized) --------------------
             N  = min(size(EarthStates,1), size(AstStates,1));
+
             rE = EarthStates(1:N,1:3);
             rA = AstStates (1:N,1:3);
 
@@ -892,6 +899,7 @@ classdef InterceptionLibrary
         end
 
 
+
         %% --- Setup Functions ---
         function ICs_atMBI = getStatesAtMBI(obj, statesAtMOID, monthsBack, odeOpt)
             % getStatesAtMBI  Backward‐propagate Earth & asteroid from MOID
@@ -921,7 +929,7 @@ classdef InterceptionLibrary
             end
 
             monthsBack  = monthsBack(:).';           % make months a row vector
-            nM          = numel(monthsBack);         % number of months 
+            nM          = numel(monthsBack);         % number of months
 
             rE = zeros(nM,3);  vE = zeros(nM,3);
             rA = zeros(nM,3);  vA = zeros(nM,3);
@@ -1008,129 +1016,140 @@ classdef InterceptionLibrary
 
         % --- TYPE 1 ANALYSIS HELPERS ---
 
-        function bodies = addPostInterceptAsteroid(obj, bodies, cfg)
-            % ADDPOSTINTERCEPTASTEROID  Apply momentum transfer and append
-            % a post-impact asteroid to the bodies struct.
-            %
-            % REQUIRED cfg fields
-            %   astFC [1×6]   asteroid state at intercept [km, km/s]
-            %   bestVF [3×1]  interceptor velocity at intercept [km/s]
-            %   TOF_sec       intercept epoch [s]
-            %   m_sc, M_ast   spacecraft and asteroid mass [kg]
-            %   beta          momentum enhancement factor [–]
-            %   tspan [1×N]   global time grid [s]
-            %   step_s        integration step [s]
-            % OPTIONAL cfg fields
-            %   odeOpt        ODE options (odeset)
-            %   kAst, asteroids  for naming the new body
-            %   post_tail_sec    extra time to propagate beyond leg grid [s] (default 0)
 
-            % ---- unpack incoming parameters 
-            rAst_nom_int = cfg.Xast_nom_int(1:3).';   % nominal asteroid pos at intercept [km]
-            rAst_nom_int = rAst_nom_int(:);      
-                
-            vAst_nom_int = cfg.Xast_nom_int(4:6).';   % nominal asteroid vel at intercept [km/s]
-            vAst_nom_int = vAst_nom_int(:);           
+        function bodies = addPostInterceptAsteroid_simple(obj, bodies, cfg)
+            % REQUIRED: cfg.tail_sec (s), cfg.step_min (min), cfg.bestVF, cfg.m_sc, cfg.M_ast, cfg.beta
+            % cfg.odeOpt
 
-            VFcol  = cfg.bestVF(:);                   % SC vel at intercept [km/s]
-            
-            tspan_post_int = cfg.tspan_post_int(:).'; % full timespan from dep to int + post interception [s]
-            TOF_sec        = cfg.TOF_sec;             % seconds elapsed in the TOF from dep to int
-            
-            % ---- Check if ODE options were sent 
-            if ~isfield(cfg,'odeOpt') || isempty(cfg.odeOpt)
-                cfg.odeOpt = odeset('RelTol',1e-13,'AbsTol',1e-13);
+            % Use the nominal asteroid state at the intercept from bodies{2} (last sample of the leg)
+            XA_nom_int = bodies{2}.X_hist(end,:);
+            rA_nom_int = XA_nom_int(1:3).'; vA_nom_int = XA_nom_int(4:6).';
+            VF = cfg.bestVF(:);
+
+            % Impactor SC state at interception epoch
+            Xsc_int = bodies{3}.X_hist(end,:);        
+            rSC_int  = Xsc_int(end,1:3);  rSC_int   = rSC_int(:);
+
+            if norm(rA_nom_int - rSC_int) > 1e-3
+                warning('SC and nominal asteroid positions differ at intercept (||Δr|| = %.3g km).', ...
+                    norm(rA_nom_int - rSC_int));
             end
 
-            % ---- compute asteroid ΔV [km/s]
-            U_mps  = (VFcol - vAst_nom_int) * 1e3;           % Relative vel in [m/s]
-            Uhat   = U_mps ./ max(norm(U_mps), eps);         % Relative vel direction
-            dV_kms = obj.computeAsteroidDeltaV(cfg.m_sc, cfg.M_ast, U_mps, Uhat, cfg.beta) / 1e3;  % Imparted DV to asteroid
+            % ΔV on asteroid (km/s) – works for m_sc = 0 too (then dV = 0)
+            U_mps  = (VF - vA_nom_int) * 1e3;
+            Uhat   = U_mps ./ max(norm(U_mps), eps);
+            dV_kms = obj.computeAsteroidDeltaV(cfg.m_sc, cfg.M_ast, U_mps, Uhat, cfg.beta) / 1e3;
 
-            % ---- post-interception asteroid IC
-            vPost         = vAst_nom_int + dV_kms;               % new asteroid vel [km/s]
-            X0ast_post_int = [rAst_nom_int ; vPost];              % new asteroid state, pos is same
+            X0_post = [rA_nom_int; vA_nom_int + dV_kms];    
 
-            % up to here we have a bodies with three elements inside 
-            % 146881×6 double
-            % all have the same size cause we started the prop for all of
-            % them from departure epoch         
-            
+            % ---- build local time vector and FORCE the exact endpoint
+            step_s   = cfg.step_min * 60;
+            tail_sec = max(0, cfg.tail_sec);
+            t_rel    = 0:step_s:tail_sec;
+            if t_rel(end) < tail_sec
+                t_rel(end+1) = tail_sec;   % <-- critical: include exact cadence end
+            end
 
-            % ---- propagate AFTER impact on the global grid 
-            % tf is not intercept time, it's the final simulation time!
-            [tspan_dep_to_tf, t_int_to_tf, XAst_hist_dep_to_tf]  = build_postimpact_history( ...
-                X0ast_post_int, tspan_post_int, TOF_sec, cfg.step_min * 60, cfg.odeOpt, obj.MU_SUN_KM);
+            % integrate on requested epochs (ode45 returns states exactly at t_rel)
+            [~, X_rel] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), ...
+                t_rel, X0_post, cfg.odeOpt);
 
-            % ---- name for new body (fallbacks)
+            % name
             astName = "Asteroid";
-            
             if numel(bodies) >= 2 && isfield(bodies{2},'name') && ~isempty(bodies{2}.name)
                 astName = string(bodies{2}.name);
-            end 
+            end
 
-            % ---- append new post-impact asteroid body
             postBody.name   = sprintf('%s (post-intercept)', astName);
-            postBody.IC     = X0ast_post_int.';            % initial cond asteroid post intercept 
-            postBody.tspan  = tspan_dep_to_tf.';           % tspan from dep to final time for post-intercept asteroid
-            postBody.t_hist = tspan_dep_to_tf;             % t_hist, includes NaN column from dep to int
-            postBody.X_hist = XAst_hist_dep_to_tf;         % N×6 (NaNs before TOF; tail appended)
+            postBody.IC     = X0_post.';     % IC at t=0 (impact)
+            postBody.tspan  = t_rel.';       % local time since impact
+            postBody.t_hist = t_rel.';
+            postBody.X_hist = X_rel;
             bodies{end+1}   = postBody;
-
-            % ---- hide interceptor after impact (convention: index 3)
-            bodies = blank_interceptor_after_hit(bodies, TOF_sec);
-
-            % ====================== nested helpers ======================
-            function [tspan_dep_to_tf, tspan_int_to_tf, XAst_hist_dep_to_tf] = ...
-                      build_postimpact_history(Xast_post_int, tspan_post_int, TOF_sec, step_s, odeOpt, mu_central)
-                
-                % Fill rows aligned with the lambert grid for t >= TOFsec
-                 
-                % tspan_post_int includes BOTH time windows: from dep to
-                % interception + from interception to final time defined by
-                % user
-                
-                nFramesFull = numel(tspan_post_int);   % total num of time steps in FULL TIME WINDOW: dep to int + int to final time
-
-                idxTOF    = find(tspan_post_int >= TOF_sec, 1, 'first');  % find then intercept epoch idx 
-              
-                Tremain = max(0, tspan_post_int(end) - TOF_sec);        % til user defined final time
-
-                % tspan from intercept to final time 
-                tspan_int_to_tf = 0:step_s:Tremain;
-          
-                % integrate from the post-intercept IC up to the final time 
-                [~, Xast_int_to_tf] = ...
-                ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,mu_central),tspan_int_to_tf, Xast_post_int(:), odeOpt);
-
-                % allocate for the left time from int to tf, fill only t >= TOF
-                % intialize FULL state history vector size 
-                XAst_hist_dep_to_tf = nan(nFramesFull,6);
-
-                lastIdx = idxTOF;
-
-                % Append the histories from int to final time to the full
-                % history 
-                XAst_hist_dep_to_tf(idxTOF:end,:) = Xast_int_to_tf(1:end, :);
-
-                tspan_dep_to_tf = tspan_post_int(:);
-            end
-
-            function bodiesOut = blank_interceptor_after_hit(bodies, TOFsec)
-                bodiesOut = bodies;
-
-                iInt = 3;       % interceptor index in the bodies
-                
-                if iInt<=numel(bodiesOut) && isfield(bodiesOut{iInt},'t_hist')
-                    idxInt = find(bodiesOut{iInt}.t_hist >= TOFsec, 1, 'first');  % Interception idx
-                    if ~isempty(idxInt)
-                        bodiesOut{iInt}.X_hist(idxInt:end,:) = nan;
-                    end
-                end
-            end
- 
         end
 
+
+
+
+        % function bodies = addPostInterceptAsteroid_simple(obj, bodies, cfg)
+        %     % ADDPOSTINTERCEPTASTEROID_SIMPLE
+        %     % Simple post-impact asteroid whose time axis starts at t=0 (at impact)
+        %     % and runs forward for a requested duration. No NaNs, no global alignment.
+        %     %
+        %     % REQUIRED cfg fields
+        %     %   Xast_nom_int  [1x6]  nominal asteroid state at intercept [km, km/s]
+        %     %   bestVF        [3x1]  interceptor velocity at intercept [km/s]
+        %     %   m_sc, M_ast   [kg]
+        %     %   beta          [–]
+        %     %   tail_sec      [s]    how long to propagate after the impact
+        %     %   step_min      [min]
+        %     % OPTIONAL
+        %     %   odeOpt        odeset; default RelTol=AbsTol=1e-13
+        %
+        %
+        %
+        %     % ---- unpack inputs, asteroid  and sc position at interception
+        %
+        %     % note there are 2 opions to pick ast nom pos at int
+        %
+        %     % XA_nom_int = bodies{2}.X_hist(end,:);
+        %     XA_nom_int = cfg.Xast_nom_int;
+        %
+        %     Xsc_int = bodies{3}.X_hist(end,:);
+        %
+        %     rA_nom_int = XA_nom_int(1:3).';   rA_nom_int = rA_nom_int(:);
+        %     vA_nom_int = XA_nom_int(4:6).';   vA_nom_int = vA_nom_int(:);
+        %
+        %     rSC_int  = Xsc_int(end,1:3);  rSC_int   = rSC_int(:);
+        %
+        %     if norm(rA_nom_int - rSC_int) > 1e-3
+        %         warning('SC and nominal asteroid positions differ at intercept (||Δr|| = %.3g km).', ...
+        %             norm(rA_nom_int - rSC_int));
+        %     end
+        %
+        %     VF = cfg.bestVF(:);
+        %
+        %     % ---- ΔV on asteroid (km/s)
+        %     U_mps  = (VF - vA_nom_int) * 1e3;
+        %     Uhat   = U_mps ./ max(norm(U_mps), eps);
+        %     dV_kms = obj.computeAsteroidDeltaV(cfg.m_sc, cfg.M_ast, U_mps, Uhat, cfg.beta) / 1e3;
+        %
+        %     % ---- post-impact IC (at t=0 of the post body)
+        %     X0_post = [rA_nom_int; vA_nom_int + dV_kms];
+        %
+        %     % ---- build local time from impact → impact + tail_sec
+        %     step_s   = cfg.step_min * 60;
+        %
+        %     tail_sec = max(0, getfielddef(cfg,'tail_sec',0));   % <— use tail_sec
+        %
+        %     t_rel = 0:step_s:tail_sec;
+        %
+        %     % ---- integrate local post-interception asteroid for the time in tail
+        %     [T_rel, X_rel] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), ...
+        %         t_rel, X0_post, cfg.odeOpt);
+        %
+        %     % ---- name
+        %     astName = "Asteroid";
+        %     if numel(bodies) >= 2 && isfield(bodies{2},'name') && ~isempty(bodies{2}.name)
+        %         astName = string(bodies{2}.name);
+        %     end
+        %
+        %     % ---- append new, independent-timeline body (starts at t=0 = impact)
+        %     postBody.name   = sprintf('%s (post-intercept)', astName);
+        %     postBody.IC     = X0_post.';   % row
+        %     postBody.tspan  = t_rel.';     % column = local time
+        %     postBody.t_hist = t_rel.';     % "
+        %     postBody.X_hist = X_rel;
+        %     bodies{end+1}   = postBody;
+        %
+        %     % tiny local helper (add at bottom of file if you don't already have one)
+        %     function val = getfielddef(S, field, default)
+        %         if isfield(S, field) && ~isempty(S.(field)), val = S.(field); else, val = default; end
+        %     end
+        %
+        % end
+        %
+        %
 
 
         function TOF = computeTOF(obj, t0_MBI, tf_MBI)
@@ -1181,7 +1200,7 @@ classdef InterceptionLibrary
 
         function tspan = makeTimeGrid(obj, tf_sec, step_min, scaleUp)
             % MAKETIMEGRID  Build a fixed-step time vector up to tf_sec*scaleUp.
-            %   outputs a tspan in units of seconds 
+            %   outputs a tspan in units of seconds
             %   tspan = obj.makeTimeGrid(tf_sec, step_min, scaleUp)
             step_s = step_min * 60;
             tEnd   = tf_sec * scaleUp;
@@ -1291,64 +1310,97 @@ classdef InterceptionLibrary
         function plotEarthCentered(obj, bodies, perf, XE_post, XA_post)
             % PLOTEARTHCENTERED  Earth-centered visualization of nominal/post-impact asteroid.
             %
-            %   obj.plotEarthCentered(bodies, perf, XE_post, XA_post, astName)
+            %   obj.plotEarthCentered(bodies, perf, XE_post, XA_post)
             %
-            % Notes:
-            %   - Ensures astName is a scalar (char) to avoid plot3 DisplayName errors.
+            % Robust to duplicate Earth time stamps and NaN-padded segments. Also plots the
+            % post-impact asteroid position at the nominal Earth-impact epoch (end of timeline).
 
             astName = bodies{2}.name;
-
-            % --- normalize astName to a scalar char ---
+            % --- normalize astName to scalar char (defensive) ---
             if isstring(astName)
-                if ~isscalar(astName)
-                    astName = strjoin(astName, "");      % collapse string array
-                end
-                astName = char(astName);
+                astName = char(strjoin(astName,""));
             elseif iscell(astName)
-                astName = char(strjoin(string(astName), "")); % collapse cellstr
+                astName = char(strjoin(string(astName),""));
             else
-                astName = char(string(astName));         % numeric, etc.
+                astName = char(string(astName));
             end
 
-            % relative trajectories wrt Earth
-            tE  = bodies{1}.t_hist;    XE = bodies{1}.X_hist(:,1:3);
-            tA  = bodies{2}.t_hist;    XA_rel  = bodies{2}.X_hist(:,1:3) - interp1(tE,XE,tA,'linear','extrap');
-            tAp = bodies{4}.t_hist;    XAp_rel = bodies{4}.X_hist(:,1:3) - interp1(tE,XE,tAp,'linear','extrap');
+            % ---------------- Earth-centered histories ----------------
+            % Earth timeline (may contain duplicates at the intercept due to padding)
+            tE  = bodies{1}.t_hist(:);
+            XE  = bodies{1}.X_hist(:,1:3);
 
-            % build bodies for Earth-centered plotting (names as scalar char)
+            % De-duplicate Earth sample points (critical for interp1)
+            [tEuniq, ia] = unique(tE,'stable');
+            XEuniq       = XE(ia,:);
+
+            % Nominal asteroid (same pre-intercept timeline as Earth, plus NaN tail)
+            tA     = bodies{2}.t_hist(:);
+            % Interpolate Earth @ tA safely
+            EX_atA = interp1(tEuniq, XEuniq, tA, 'linear', 'extrap');
+            XA_rel = bodies{2}.X_hist(:,1:3) - EX_atA;
+
+            % Post-intercept asteroid (NaN padded pre-hit; valid after intercept)
+            tAp     = bodies{4}.t_hist(:);
+            EX_atAp = interp1(tEuniq, XEuniq, tAp, 'linear', 'extrap');
+            XAp_rel = bodies{4}.X_hist(:,1:3) - EX_atAp;
+
+            % ---------------- Plot Earth-centered ----------------
             bodiesRel = {
-                struct('name','Earth',                    'X_hist',zeros(size(XA_rel,1),6),'t_hist',tA)
-                struct('name',[astName ' (nominal)'],     'X_hist',[XA_rel  zeros(size(XA_rel))],  't_hist',tA)
-                struct('name',[astName ' (intercept)'],   'X_hist',[XAp_rel zeros(size(XAp_rel))], 't_hist',tAp)
+                struct('name','Earth',                  'X_hist',zeros(size(XA_rel,1),6),'t_hist',tA)
+                struct('name',[astName ' (nominal)'],   'X_hist',[XA_rel  zeros(size(XA_rel))],  't_hist',tA)
+                struct('name',[astName ' (intercept)'], 'X_hist',[XAp_rel zeros(size(XAp_rel))], 't_hist',tAp)
                 };
 
             plt = PlotterLibrary();
             plt.plot_2BP_trajectories(bodiesRel, "Earth", CelestialBody("Earth").mu.km, false, ...
                 'StatesProvided', true, 'ShowStartEnd', false, 'Title', "");
 
-            % overlay EM-sphere
-            hRel = gcf; figure(hRel); hold on; [sx,sy,sz] = sphere(60);
+            hold on; axis equal; grid on;
+
+            % Earth–Moon nominal distance sphere for scale
+            [sx,sy,sz] = sphere(60);
             surf(sx*384400, sy*384400, sz*384400, ...
                 'FaceColor',[.2 .6 1], 'FaceAlpha',.25, 'EdgeColor','none', ...
                 'DisplayName','Earth–Moon distance');
 
-            % mark CA in Earth-relative frame & path from impact→CA
+            % ---------------- Mark CA (post) ----------------
             cols = lines(numel(bodiesRel));
             rCA  = perf.CA_post.stateAst(1:3) - perf.CA_post.stateEarth(1:3);
             plot3(rCA(1), rCA(2), rCA(3), 'o', 'MarkerFaceColor', cols(3,:), ...
                 'MarkerEdgeColor','k', 'MarkerSize', 8, 'DisplayName', 'Post-intercept CA');
 
+            % ---------------- Path from impact → CA (if provided) ----------------
             if nargin >= 5 && ~isempty(XE_post) && ~isempty(XA_post)
                 XExt_rel = XA_post(:,1:3) - XE_post(:,1:3);
+                % try to use CA index if present; otherwise fall back to min distance
                 idxImpact = 1;
-                idxCA     = perf.CA_post.idxAst;
+                if isfield(perf,'CA_post') && isfield(perf.CA_post,'idxAst') && ...
+                        ~isempty(perf.CA_post.idxAst) && perf.CA_post.idxAst <= size(XExt_rel,1)
+                    idxCA = perf.CA_post.idxAst;
+                else
+                    [~,idxCA] = min(sum(XExt_rel.^2,2));
+                end
                 plot3(XExt_rel(idxImpact:idxCA,1), XExt_rel(idxImpact:idxCA,2), XExt_rel(idxImpact:idxCA,3), ...
                     'Color', cols(3,:), 'LineWidth', 2, 'HandleVisibility', 'off');
             end
 
-            xlim([-1.5e6 1.5e6]); ylim([-1.5e6 1.5e6]); legend('Location','best'); drawnow;
-        end
+            % ---------------- Mark post-asteroid @ nominal Earth-impact epoch ----------------
+            % Assumption: your unified timeline ends at the original nominal Earth-impact time.
+            t_nomImpact = bodies{1}.t_hist(end);           % end of unified timeline
+            % Locate this epoch on the post-impact asteroid timeline (tAp)
+            i_nom = find(abs(tAp - t_nomImpact) <= max(eps(t_nomImpact),1e-6), 1, 'last');
+            if isempty(i_nom), i_nom = numel(tAp); end     % fallback to last available sample
+            if all(isfinite(XAp_rel(i_nom,:)))
+                rNom = XAp_rel(i_nom,:);
+                plot3(rNom(1), rNom(2), rNom(3), 's', ...
+                    'MarkerFaceColor',[0.9 0.3 0.1], 'MarkerEdgeColor','k', ...
+                    'MarkerSize', 8, 'DisplayName','Post-ast @ nominal impact time');
+            end
 
+            xlim([-1.5e6 1.5e6]); ylim([-1.5e6 1.5e6]);
+            legend('Location','best'); drawnow;
+        end
 
 
     end

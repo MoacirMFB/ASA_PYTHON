@@ -195,7 +195,7 @@
     % ADJUSTED FOR EML-COMPILATION 24/Dec/2009
     
         % initial values
-        tol = 1e-14;    bad = false;     days = 86400;
+        tol = 1e-16;    bad = false;     days = 86400;
     
         % work with non-dimensional units
         r1 = sqrt(r1vec*r1vec.');  r1vec = r1vec/r1;
