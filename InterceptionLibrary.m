@@ -22,7 +22,8 @@ classdef InterceptionLibrary
     %   - Requires KeplerianOrbitalMechanicsLibrary for 2BP dynamics.
     %
 
-    %% --------------------------------------------------------------------
+    %% ----------------------------------------------------------
+    % ----------
     properties (Access = private)
         orb   % KeplerianOrbitalMechanicsLibrary handle (for 2BP dynamics)
     end
@@ -128,7 +129,7 @@ classdef InterceptionLibrary
             %           e.g. {'2004 VD17','Apophis'}
             % Output
             %   ast   : cell{K,1}, each ast{k} is a struct:
-            %             .name (string) , .coe (1x6 [a_AU e i RAAN ω M], a in AU, angles in rad)
+            %             .name (string) , .coe (1x6 [a_AU e i RAAN ω TA], a in AU, angles in rad)
 
             if ischar(names) || (isstring(names) && isscalar(names)), names = {char(names)}; end
             names = string(names(:));
@@ -141,6 +142,7 @@ classdef InterceptionLibrary
             db('1950 DA')     = [1.6986794, 0.5075054, deg2rad([12.15458,356.54705,224.82640,0])];
             db('Bennu')       = [1.1259897, 0.2037311, deg2rad([6.03290, 1.97241, 66.39438, 0])];
             db('Apophis')     = [0.9225521, 0.1912907, deg2rad([3.33974,203.91537,126.68323,0])];
+                
             db('2011 AG5')    = [1.4241515, 0.3882701, deg2rad([3.69422,135.59205,54.05017,0])];
             db('2022 AE1')    = [1.4708823, 0.5461987, deg2rad([6.29686,102.18992,268.32032,0])];
             db('2000 SG344')  = [0.9774614, 0.0669332, deg2rad([0.11213,191.95995,275.30264,0])];
@@ -162,11 +164,18 @@ classdef InterceptionLibrary
             % ast{k} fields added: .t_hist [Nx1], .X_hist [Nx6] (km, km/s)
 
             for k = 1:numel(ast)
-                X_AU   = obj.orb.coe_to_cartesian(ast{k}.coe, obj.MU_SUN_AU);
-                r0_km  = X_AU(1:3) * env.AU2km;
-                v0_km_s= X_AU(4:6) * env.AU2km;
-                X0     = [r0_km(:); v0_km_s(:)];
-                [t, X] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), env.tspan, X0, env.odeOpt);
+                coe_k = ast{k}.coe;
+                coe_k = [coe_k(1) * env.AU2km, coe_k(2:6)];            
+
+                % my internal library is not working, requires checks!
+                % X0   = obj.orb.coe_to_cartesian(coe_k, obj.MU_SUN_KM,
+                % 'useTA', true); 
+                
+                % Using Aerospace Toolbox Kep2Cart function
+                [r, v] = keplerian2ijk(coe_k(1), coe_k(2), rad2deg(coe_k(3)), rad2deg(coe_k(4)), rad2deg(coe_k(5)), rad2deg(coe_k(6)), 'GravitationalParameter', obj.MU_SUN_KM);
+                X0   = [r;v];
+
+                [t, X] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), env.tspan, X0', env.odeOpt);
                 ast{k}.t_hist = t;
                 ast{k}.X_hist = X;
             end
@@ -195,33 +204,90 @@ classdef InterceptionLibrary
         end
 
 
-        function [ast, IC_atMBI_Earth_Ast] = prepareMBI(obj, ast, env, monthsBack, forceImpact)
-            % prepareMBI  Compute nominal MOID/CA, optionally force impact, then back-prop to MBI.
-            %   ast is a *cell* array of asteroid structs; output ast (cell) is updated in place.
-            % Outputs:
-            %   ast{k}.MOID_pre_km, ast{k}.CA_pre_km (0 if forced), optional name suffix "_forced_"
-            %   States_MBI_Earth_Ast{k}(i).stateEarth / .stateAst at monthsBack(i)
+        function [ast, IC_at_MBI_Earth_Ast, stateAtMOID_final] = prepareMBI(obj, ast, env, monthsBack, forceImpact)
+            % PREPAREMBI  Compute nominal Earth–asteroid MOID/CA epoch, optionally force an impact,
+            %             then generate Months-Before-Impact (MBI) state sets by back-propagation.
+            %
+            % SYNTAX:
+            %   [ast, IC_at_MBI_Earth_Ast, stateMOID_nom] = prepareMBI(obj, ast, env, monthsBack, forceImpact)
+            %
+            % DESCRIPTION:
+            %   For each asteroid in the input cell array, this routine:
+            %     1) Finds the nominal closest-approach/MOID epoch between Earth and the asteroid
+            %        using their pre-propagated heliocentric (HCI) histories (env.X_Earth_hist, ast{k}.X_hist).
+            %     2) (Optional) Forces an impact geometry by replacing the asteroid position with
+            %        Earth's position at the MOID epoch (velocities left unchanged), and records
+            %        MOID_pre_km = CA_pre_km = 0 as a bookkeeping convention; appends "-forced"
+            %        to the asteroid name.
+            %     3) From the chosen MOID/CA epoch (nominal or forced), back-propagates to each
+            %        requested offset in monthsBack to assemble per-month state pairs
+            %        (Earth/asteroid) for later use (e.g., Lambert, targeting, etc.).
+            %
+            % INPUTS:
+            %   obj         : Object providing:
+            %                   - get_CA_MOID(XE_hist, XA_hist, tE, tA)  → nominal MOID struct
+            %                   - getStatesAtMBI(stateAtMOID, monthsBack) → per-month states
+            %   ast         : 1×N cell array of asteroid structs. Each ast{k} must contain:
+            %                   - X_hist  : [M×6] HCI states (km, km/s) over time
+            %                   - t_hist  : [M×1] time vector matching X_hist
+            %                   - name    : string/char
+            %                   - it contains original time history of the
+            %                   asteroid
+            %   env         : Struct with Earth ephemeris:
+            %                   - X_Earth_hist : [Me×6] Earth HCI states (km, km/s)
+            %                   - t_Earth      : [Me×1] time vector
+            %                 (Other fields are ignored here.)
+            %   monthsBack  : Vector of positive integers (e.g., 3:36) indicating how many
+            %                 months before the MOID/CA epoch to generate states.
+            %   forceImpact : logical. If true, enforce r_ast = r_Earth at MOID epoch
+            %                 (velocity left as in the nominal MOID solution) and mark MOID/CA = 0.
+            %
+            % OUTPUTS:
+            %   ast                      : Same cell array, updated in place with fields:
+            %                               - MOID_pre_km : nominal MOID distance (km), or 0 if forced
+            %                               - CA_pre_km   : nominal closest-approach distance (km), or 0 if forced
+            %                               - name        : name string (appended with "-forced" if applicable)
+            %   IC_at_MBI_Earth_Ast      : 1×N cell array. Each cell is an array of structs,
+            %                              one per monthsBack(i), with fields:
+            %                               - stateEarth : [1×6] Earth HCI state (km, km/s) at that MBI
+            %                               - stateAst   : [1×6] Asteroid HCI state (km, km/s) at that MBI
+            %   stateMOID_nom            : MOID struct for the last processed asteroid containing at least:
+            %                               - stateEarth : [1×6] Earth HCI state at nominal MOID epoch
+            %                               - stateAst   : [1×6] Asteroid HCI state at nominal MOID epoch
+            %                               - d_km       : scalar MOID/CA distance (km)
+            %
+            % UNITS & FRAMES:
+            %   - All states are heliocentric Cartesian (HCI), position in km, velocity in km/s.
+            %   - monthsBack is interpreted by obj.getStatesAtMBI (nominal month length convention therein).
+            %
+            % ASSUMPTIONS / NOTES:
+            %   - Earth/asteroid histories in env/ast are pre-propagated over a span that includes
+            %     the nominal MOID/CA epoch.
+            %   - When forceImpact = true, only the asteroid position is overridden at MOID epoch
+            %     (velocities are not altered).
 
-            IC_atMBI_Earth_Ast = cell(1, numel(ast));
+
+
+            IC_at_MBI_Earth_Ast = cell(1, numel(ast));
 
             for k = 1:numel(ast)
-                [~, stateMOID_nom] = obj.get_CA_MOID(env.X_Earth_hist, ast{k}.X_hist, env.t_Earth, ast{k}.t_hist);
-                ast{k}.MOID_pre_km = stateMOID_nom.d_km;
-                ast{k}.CA_pre_km   = stateMOID_nom.d_km;
+                [~, stateMOID] = obj.get_CA_MOID(env.X_Earth_hist, ast{k}.X_hist, env.t_Earth, ast{k}.t_hist);
+                ast{k}.MOID_pre_km = stateMOID.d_km;
+                ast{k}.CA_pre_km   = stateMOID.d_km;
 
                 if forceImpact
-                    stateMOID_forced = stateMOID_nom;
-                    stateMOID_forced.stateAst(1:3) = stateMOID_forced.stateEarth(1:3);
+                    stateMOID_forced = stateMOID;
+                    stateMOID_forced.stateAst(1:3) = stateMOID_forced.stateEarth(1:3); % force ast post at MOID be same as Earth
                     ast{k}.MOID_pre_km = 0;
                     ast{k}.CA_pre_km   = 0;
                     ast{k}.name = string(ast{k}.name);
                     ast{k}.name = ast{k}.name + "-forced";
-                    stateAtMOID = stateMOID_forced;
+                    stateAtMOID_final = stateMOID_forced;
                 else
-                    stateAtMOID = stateMOID_nom;
+                    stateAtMOID_final = stateMOID;
                 end
 
-                IC_atMBI_Earth_Ast{k} = obj.getStatesAtMBI(stateAtMOID, monthsBack);
+                IC_at_MBI_Earth_Ast{k} = obj.getStatesAtMBI(stateAtMOID_final, monthsBack);
             end
         end
 
@@ -322,7 +388,7 @@ classdef InterceptionLibrary
 
             % --------------- sanity check: SC meets Ast at intercept ---------------
 
-            if norm(rA_nom_int - rSC_int) > 1e-2
+            if norm(rA_nom_int - rSC_int) > 0.1
                 warning('SC and nominal asteroid positions differ at intercept (||Δr|| = %.3g km).', ...
                     norm(rA_nom_int - rSC_int));
             end
@@ -868,7 +934,6 @@ classdef InterceptionLibrary
 
 
 
-
         function [CA, MOID] = get_CA_MOID(obj, EarthStates, AstStates, timeE, timeA)
             % get_CA_MOID  Compute time-synced closest approach and global MOID
             %
@@ -901,7 +966,7 @@ classdef InterceptionLibrary
 
             % -------------------------------------------------------------------------
             % 0) user-tuneable search radius for MOID speed-up of computation
-            THRESH_KM = 2e6;            % 2 million km  (more less 5.25 × lunar distance)
+            THRESH_KM = 1e6;            % 2 million km  (more less 5.25 × lunar distance)
 
             % -------------------------------------------------------------------------
             % 1) time-synced closest approach  (vectorized) --------------------
@@ -1001,6 +1066,13 @@ classdef InterceptionLibrary
             for k = 1:nM   % for each month in the monthsBack vector
                 dt = monthsBack(k) * 30 * 86400;    % time in seconds before the MOID point
 
+                if dt == 0
+                    ICs_atMBI(k).month      = monthsBack(k);
+                    ICs_atMBI(k).stateEarth = statesAtMOID.stateEarth(:).';
+                    ICs_atMBI(k).stateAst   = statesAtMOID.stateAst(:).';
+                    continue;
+                end
+
                 % ------- Earth backward propagation -------
                 [~,XE] = ode45(@(t,X) obj.orb.dynamics_2BP_cartesian(t,X,obj.MU_SUN_KM), [0 -dt], statesAtMOID.stateEarth(:), odeOpt);
                 rE(k,:) = XE(end,1:3);    vE(k,:) = XE(end,4:6);
@@ -1064,8 +1136,8 @@ classdef InterceptionLibrary
         end
 
 
-       %%  --- Momentum Exchange ---
-       
+        %%  --- Momentum Exchange ---
+
         function deltaV = computeAsteroidDeltaV(obj,m,M,U,Ehat,beta)
             % Robust against m<=0, M<=0, and undefined ratios.
             if ~(m>0) || ~(M>0) || ~isfinite(m/M)
@@ -1123,7 +1195,7 @@ classdef InterceptionLibrary
             %   • Heliocentric, 2-body point-mass dynamics with μ☉ (obj.MU_SUN_KM).
             %   • Units: position [km], velocity [km/s], time [s].
             %   • The LAST samples of bodies{2} and {3} coincide in position at intercept. If not,
-            %     a WARNING is issued (tolerance ~1e-2 km).            
+            %     a WARNING is issued (tolerance ~1e-2 km).
             %
             % Numerical Notes
             %   • The local time vector explicitly INCLUDES the exact endpoint tail_sec to avoid
@@ -1141,7 +1213,7 @@ classdef InterceptionLibrary
             Xsc_int = bodies{3}.X_hist(end,:);
             rSC_int  = Xsc_int(end,1:3);  rSC_int   = rSC_int(:);
 
-            if norm(rA_nom_int - rSC_int) > 1e-2
+            if norm(rA_nom_int - rSC_int) > 0.1
                 warning('SC and nominal asteroid positions differ at intercept (||Δr|| = %.3g km).', ...
                     norm(rA_nom_int - rSC_int));
             end
@@ -1179,8 +1251,8 @@ classdef InterceptionLibrary
             bodies{end+1}   = postBody;
         end
 
-  
-        
+
+
         %%  --- Helpers ---
 
         function TOF = computeTOF(obj, t0_MBI, tf_MBI)

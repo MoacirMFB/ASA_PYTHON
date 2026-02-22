@@ -201,7 +201,7 @@ classdef PlotterLibrary
 
         %% Orbital Mechanics Plotters
 
-        function bodies = plot_2BP_trajectories(obj, bodies, central, mu_central, animate, varargin)
+        function [bodies, hFig] = plot_2BP_trajectories(obj, bodies, central, mu_central, animate, varargin)
             % plot_2BP_trajectories  Propagate (or accept pre-propagated histories) and
             % plot one-or-many trajectories in a two-body problem, with an optional
             % animated "follow-cam" movie.

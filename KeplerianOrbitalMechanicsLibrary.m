@@ -1444,7 +1444,7 @@ classdef KeplerianOrbitalMechanicsLibrary
 
    
     %% ====== 2BP Jacobian (Cartesian, no perturbations) ======
-    function A = jacobian_2BP_cartesian(obj, t, X, mu)
+    function A = jacobian_2BP_cartesian(obj,t, X, mu)
         % JACOBIAN_2BP_CARTESIAN  Returns the state Jacobian ∂f/∂X for the
         % unperturbed 2-body problem in Cartesian coordinates.
         %
@@ -1504,8 +1504,46 @@ classdef KeplerianOrbitalMechanicsLibrary
 
     end
 
+    %% ====== STATE TRANSITION MATRIX Propagators ======
+    function [Phi_T, X_T] = propagateSTM_2BP(obj, X0, mu, tspan, opts)
+        Phi0  = eye(6);
+        Xaug0 = [X0(:); Phi0(:)];
+        rhs   = @(t,X) augmentedDynamics2BP_STM(obj, t, X, mu);
+        [~, Xaug] = ode89(rhs, tspan, Xaug0, opts);
+        Xaug_T = Xaug(end,:).';
+        X_T    = Xaug_T(1:6);
+        Phi_T  = reshape(Xaug_T(7:end), 6, 6);
+    end
 
-%% ====== 2BP Propagators With Perturbation ======
+
+    function dXaug = augmentedDynamics2BP_STM(obj,t, Xaug, mu)
+        % State + STM dynamics for the unperturbed 2-body problem (Cartesian).
+        % Xaug = [x;y;z;vx;vy;vz; vec(Phi)], where Phi is 6x6 (column-stacked).
+
+        %  split state and STM
+        X   = Xaug(1:6);
+        Phi = reshape(Xaug(7:end), 6, 6);
+
+        %  state dynamics
+        x = X(1); y = X(2); z = X(3);
+        r3 = (x*x + y*y + z*z)^(3/2);
+        ax = -mu*x / r3;
+        ay = -mu*y / r3;
+        az = -mu*z / r3;
+        dX = [X(4); X(5); X(6); ax; ay; az];
+
+        %  Jacobian A = ∂f/∂X
+        A = obj.jacobian_2BP_cartesian(0, X, mu);        % t unused
+
+        %  STM dynamics
+        dPhi = A * Phi;
+
+        %  pack
+        dXaug = [dX; dPhi(:)];
+    end
+
+
+    %% ====== 2BP Propagators With Perturbation ======
 
     function [x_dot] = dynamics_2BP_cartesian_J2(t,X, mu, J2, ro)
             % DYNAMICS_2BP_CARTESIAN_J2 Calculates the state vector
@@ -2302,84 +2340,241 @@ classdef KeplerianOrbitalMechanicsLibrary
             %% ====== State Converter Functions ======
                      
 
-         
-            % ================== State–converter =========================
-            function X_cart = coe_to_cartesian(obj, X_coe, mu, varargin)
-                %COE_TO_CARTESIAN  Convert Keplerian elements to Cartesian state vectors.
-                %
-                %   X_cart = coe_to_cartesian(obj, X_coe, mu)
-                %   X_cart = coe_to_cartesian(obj, X_coe, mu, 'useTA', tf)
-                %
-                % INPUTS
-                %   X_coe  : 1×6 or N×6 matrix of COE
-                %            [a, e, i, RAAN, omega, M_or_nu]
-                %   mu     : gravitational parameter (same units as a³ / t²)
-                %
-                % Optional name–value pair
-                %   'useTA'  — logical (default = false)
-                %       • false  →  6-th column is Mean-anomaly M (rad)       (legacy)
-                %       • true   →  6-th column is True-anomaly ν  (rad)
-                %
-                % OUTPUT
-                %   X_cart : N×6 Cartesian states [x y z vx vy vz]  (same units as a, μ)
 
-                % ---------- parse inputs -------------------------------------------------
+            % ================== State–converters =========================
+
+            function coe = cart2kep(Xcart, mu)
+                % cart2kep  Classical elements from Cartesian state (elliptic only).
+                % Uses h-hat 3–1–3 identities and your dualTrigInverse() to get RAAN.
+                % Inputs:
+                %   Xcart : [r; v] (6x1 or 1x6) in one inertial frame
+                %   mu    : gravitational parameter
+                % Output:
+                %   coe   : struct with a,e,i,Omega,omega,f,M,n,p,h and vectors
+
+                Xcart = Xcart(:);
+                if numel(Xcart) < 6
+                    error('kep_from_state: Xcart must have 6 elements [r; v].');
+                end
+                r = Xcart(1:3);  v = Xcart(4:6);
+
+                % Magnitudes
+                rnorm = norm(r);  vnorm = norm(v);
+
+                % Angular momentum and its unit vector
+                hvec = cross(r, v);
+                h    = norm(hvec);
+                hhat = hvec / h;
+
+                % Eccentricity vector & scalar
+                evec = ( (vnorm^2 - mu/rnorm)*r - dot(r,v)*v )/mu;
+                e    = norm(evec);
+
+                % Energy -> a, and semilatus rectum p (elliptic assumption)
+                epsE = vnorm^2/2 - mu/rnorm;
+                a    = -mu/(2*epsE);
+                p    = h^2/mu;
+
+                % Inclination (0 ≤ i ≤ π)
+                cz = max(-1, min(1, hhat(3)));
+                i  = acos(cz);
+                si = sin(i);       % = sin(i)
+
+                % ==================== RAAN Ω from h-hat ====================
+                % ĥx =  sinΩ sin i,   ĥy = -cosΩ sin i
+
+                % All candidates in degrees from your helper
+                candS = dualTrigInverse('sin', hhat(1)/si);   % [-360,360] deg
+                candC = dualTrigInverse('cos', -hhat(2)/si);   % [-360,360] deg
+
+                % Pick the common angle (equal modulo 360 within tolerance)
+                Omega_deg = pickCommonAngleDeg(candS, candC, 1e-6);
+                Omega = mod(deg2rad(Omega_deg), 2*pi);
+
+                % ===========================================================
+
+                % Argument of periapsis (ω): varpi - Ω with varpi = atan2(e_y, e_x)
+                varpi = atan2(evec(2), evec(1));
+                omega = mod(varpi - Omega, 2*pi);
+
+                % True anomaly (f)
+                if e > 1e-14
+                    x = dot(evec, r) / max(e*rnorm, eps);
+                    x = max(-1, min(1, x));
+                    y = dot(cross(evec, r), hvec) / max(h*e*rnorm, eps);
+                    f = atan2(y, x);
+                else
+                    f = atan2(r(2), r(1));
+                end
+                f = mod(f, 2*pi);
+
+                % Mean anomaly (M) and mean motion (n) — elliptic only
+                cosE = (1 - rnorm/a) / max(e, eps); cosE = max(-1, min(1, cosE));
+                sinE = (dot(r, v) / sqrt(mu*a)) / max(e, eps);
+                E    = atan2(sinE, cosE);
+                M    = mod(E - e*sin(E), 2*pi);
+                n    = sqrt(mu/a^3);
+
+                % Pack
+                coe = struct('a',a,'e',e,'i',i,'Omega',Omega,'omega',omega, ...
+                    'f',f,'M',M,'n',n,'p',p,'h',h, ...
+                    'r',rnorm,'v',vnorm, ...
+                    'evec',evec,'hvec',hvec,'hhat',hhat);
+
+                function ang = pickCommonAngleDeg(A, B, tolDeg)
+                    ang = NaN;
+                    A = A(:).'; B = B(:).';
+                    for a = A
+                        % difference wrapped to [-180,180]
+                        d = mod(a - B + 180, 360) - 180;
+                        if any(abs(d) <= tolDeg)
+                            ang = a; return;
+                        end
+                    end
+                end
+
+                % ---------- small helper (uses modulo-360 equality) ----------
+                function angles = dualTrigInverse(trigFunc, value)
+                    % dualTrigInverse: Returns all angles (in degrees) between -360 and 360
+                    % that satisfy the trigonometric equation for sine, cosine, or tangent.
+                    %
+                    % Usage:
+                    %   angles = dualTrigInverse(trigFunc, value)
+                    %
+                    % Inputs:
+                    %   trigFunc - A string: 'sin', 'cos', or 'tan'
+                    %   value    - The value for which you want to solve the equation.
+                    %
+                    % Outputs:
+                    %   angles   - A sorted vector containing all solutions in degrees within [-360, 360].
+
+
+                    angles = []; % initialize empty vector for solutions
+
+                    switch lower(trigFunc)
+                        case 'sin'
+                            % Domain check: for sine, |value| must be <= 1.
+                            if abs(value) > 1
+                                error('For sine, value must be in [-1,1].');
+                            end
+
+                            % For sin(theta)=value the general solutions are:
+                            %    theta = asind(value) + 360*k    and
+                            %    theta = 180 - asind(value) + 360*k,   for any integer k.
+                            theta0 = asind(value);  % principal value (in [-90,90])
+
+                            % Loop over a few k-values; k = -2:2 is enough for the range [-360,360]
+                            for k = -2:2
+                                angle1 = theta0 + 360*k;
+                                if (angle1 >= -360) && (angle1 <= 360)
+                                    angles(end+1) = angle1; %#ok<AGROW>
+                                end
+                                angle2 = 180 - theta0 + 360*k;
+                                if (angle2 >= -360) && (angle2 <= 360)
+                                    angles(end+1) = angle2; %#ok<AGROW>
+                                end
+                            end
+
+                        case 'cos'
+                            % Domain check: for cosine, |value| must be <= 1.
+                            if abs(value) > 1
+                                error('For cosine, value must be in [-1,1].');
+                            end
+
+                            % For cos(theta)=value the general solutions are:
+                            %    theta = acosd(value) + 360*k    and
+                            %    theta = -acosd(value) + 360*k,   for any integer k.
+                            theta0 = acosd(value);  % principal value (in [0,180])
+
+                            for k = -2:2
+                                angle1 = theta0 + 360*k;
+                                if (angle1 >= -360) && (angle1 <= 360)
+                                    angles(end+1) = angle1; %#ok<AGROW>
+                                end
+                                angle2 = -theta0 + 360*k;
+                                if (angle2 >= -360) && (angle2 <= 360)
+                                    angles(end+1) = angle2; %#ok<AGROW>
+                                end
+                            end
+
+                        case 'tan'
+                            % For tangent, value can be any real number.
+                            % For tan(theta)=value the general solution is:
+                            %    theta = atand(value) + 180*k,  for any integer k.
+                            theta0 = atand(value);  % principal value (in [-90,90])
+
+                            % For tan, period is 180°; loop over enough k-values to cover [-360,360]
+                            for k = -3:3
+                                angle = theta0 + 180*k;
+                                if (angle >= -360) && (angle <= 360)
+                                    angles(end+1) = angle; %#ok<AGROW>
+                                end
+                            end
+
+                        otherwise
+                            error('Unsupported trigonometric function. Use ''sin'', ''cos'', or ''tan''.');
+                    end
+
+                    % Remove any duplicate values (which can occur for special cases)
+                    angles = unique(angles);
+                    % Sort in ascending order
+                    angles = sort(angles);
+                end
+            end
+
+
+            function X_cart = coe_to_cartesian(obj, X_coe, mu, varargin)
+                % THIS FUNCTION NEEDS TO BE CHECKED, ONE OF THE ANGLE
+                % COMPUTATIONS IS WRONG. 
+                %COE_TO_CARTESIAN  Convert Keplerian elements to Cartesian state vectors.
+                % X_coe: [a e i RAAN omega M_or_nu], angles in rad. If 'useTA'==true, last col is nu.
+
+                % ---- parse ----
                 p = inputParser;  p.CaseSensitive = false;
                 addRequired (p,'X_coe',@(x) isnumeric(x) && (size(x,2)==6 || isvector(x)));
                 addRequired (p,'mu',    @isnumeric);
                 addParameter(p,'useTA',false,@islogical);
                 parse(p,X_coe,mu,varargin{:});
-                TAflag = p.Results.useTA;
+                useTA = p.Results.useTA;
 
-                % ---------- make sure X_coe is N×6 --------------------------------------
-                if isvector(X_coe),  X_coe = reshape(X_coe,1,[]);  end
-                [nRows,~] = size(X_coe);
+                if isvector(X_coe), X_coe = reshape(X_coe,1,[]); end
+                [N,~] = size(X_coe);
+                X_cart = zeros(N,6);
 
-                % ---------- pre-allocate output -----------------------------------------
-                X_cart = zeros(nRows,6);
-
-                % ---------- loop over each row ------------------------------------------
-                for k = 1:nRows
-                    % unpack elements
+                for k = 1:N
+                    % unpack
                     a     = X_coe(k,1);
                     e     = X_coe(k,2);
                     inc   = X_coe(k,3);
                     RAAN  = X_coe(k,4);
                     omega = X_coe(k,5);
 
-                    if  TAflag          % ------------- TRUE-anomaly was supplied -------
-                        nu = X_coe(k,6);                        % ν   (rad)
-
-                        % need the eccentric & mean anomalies for consistency
-                        r_mag = obj.r_aeta(a,e,nu);             % distance
-                        E     = obj.EccA_areta(a,r_mag,e,nu);   % eccentric anomaly
-                        M     = obj.M_eE(e,E);                  % mean anomaly (not used
-                        % later, but available)
-                    else                 % ------------- MEAN-anomaly was supplied ------
-                        M  = X_coe(k,6);                        % mean anomaly
-                        E  = obj.E_Me(M,e);                     % eccentric anomaly
-                        nu = obj.ta_eE(e,E);                    % true anomaly
-                        r_mag = obj.r_aeta(a,e,nu);             % distance
+                    % anomalies & radius
+                    if useTA
+                        nu = X_coe(k,6);
+                        r_mag = obj.r_aeta(a,e,nu);
+                    else
+                        M  = X_coe(k,6);
+                        E  = obj.E_Me(M,e);          % your solver
+                        nu = obj.ta_eE(e,E);
+                        r_mag = obj.r_aeta(a,e,nu);
                     end
 
-                    % ---- DCM from perifocal → inertial -------------------------------
-                    DCM = obj.dcmFromEulerAngleSeq([3 1 3],[RAAN , inc , omega + nu],'row');
+                    % perifocal vectors (column form)
+                    p_slr = a*(1 - e^2);
+                    r_pqw = [ r_mag*cos(nu);  r_mag*sin(nu);  0 ];
+                    v_pqw = sqrt(mu/p_slr)*[ -sin(nu);  e+cos(nu);  0 ];
 
-                    % ---- position vector --------------------------------------------
-                    r_perif = [r_mag 0 0];
-                    r_cart  = r_perif * DCM;
+                    % DCM PQW->IJK using COLUMN convention (this is the key change)
+                    C_I_P = obj.dcmFromEulerAngleSeq([3 1 3],[RAAN, inc, omega],'col');
 
-                    % ---- velocity vector --------------------------------------------
-                    v_mag = obj.vel_ura(mu,r_mag,a,'E');       % speed
-                    fpa   = obj.fpa_eta(e,nu);                 % flight–path angle
-                    v_perif = obj.v_vec_rot_frame_fpav(fpa,v_mag);
-                    v_cart  = v_perif * DCM;
+                    % transform to inertial (column), then store as row
+                    r_ijk = C_I_P * r_pqw;
+                    v_ijk = C_I_P * v_pqw;
 
-                    % ---- store -------------------------------------------------------
-                    X_cart(k,:) = [r_cart , v_cart];
+                    X_cart(k,:) = [r_ijk.'  v_ijk.'];
                 end
             end
-
 
 
             function [r_vec_eci_matrix, COE] = convertEquinoctialToECI(obj, X_eqn)
