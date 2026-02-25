@@ -121,7 +121,7 @@ classdef AppliedControlAstronauticsLibrary
                 %   The control input uk is assumed to be constant over the interval from tk to tk+1.
             
             
-                [t, Y] = ode45(@(t,Y) AppliedControlAstronauticsLibrary.discreteLinearDynamics(t, Y, A, B, c, uk, szx), [tk, tk_1], Yk, optionsODE);
+                [t, Y] = ode45(@(t,Y) augStateDiscreteLinearDynamics(t, Y, A, B, c, uk, szx), [tk, tk_1], Yk, optionsODE);
               
                 Yk_1 = Y(end,:)';                                                     % Y evaluated at t_(k+1) is last element
                 xk_1 = Yk_1(1:szx);                                                   % Extract state vector at t_(k+1)
