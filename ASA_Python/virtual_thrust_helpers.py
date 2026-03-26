@@ -1,4 +1,4 @@
-"""Local virtual thrust helpers ported from the MATLAB script."""
+"""Local virtual thrust helpers for the Python workflow."""
 
 from __future__ import annotations
 

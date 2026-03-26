@@ -1,4 +1,8 @@
-"""Runnable Python version of the MATLAB virtual thrust workflow."""
+"""Runnable Python version of the virtual thrust workflow.
+
+This file plays the role of the main workflow body, but split into small
+Python helpers so the setup, plotting, and SCP logic are easier to follow.
+"""
 
 from __future__ import annotations
 
@@ -11,10 +15,14 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-try:
-    import cvxpy as cp
-except ModuleNotFoundError:  # pragma: no cover - exercised only in partial environments
-    cp = None
+import cvxpy as cp
+
+# ============================================================================
+# Imports and runtime plumbing
+# ============================================================================
+# This top block supports both module execution (`python -m ASA_Python...`)
+# and direct execution from the file path.
+
 
 if __package__ in {None, ""}:
     import sys
@@ -41,7 +49,7 @@ if __package__ in {None, ""}:
         compute_dv_per_impact,
         compute_dvmax_from_impactors,
         conway_max_theoretical_deflection_stm,
-        rollout_zoh_2bp_control,
+        propagation_zoh_2bp_control,
     )
 else:
     from .bodies import CelestialBody
@@ -65,60 +73,76 @@ else:
         compute_dv_per_impact,
         compute_dvmax_from_impactors,
         conway_max_theoretical_deflection_stm,
-        rollout_zoh_2bp_control,
+        propagation_zoh_2bp_control,
     )
 
 
+# ============================================================================
+# Global constants
+# ============================================================================
+
+# Keep the same "30 days per month" convention used throughout this workflow.
 SECONDS_PER_MONTH = 30.0 * 86400.0
 
 
+# ============================================================================
+# Configuration and result containers
+# ============================================================================
+
 @dataclass
 class VirtualThrustConfig:
-    """Scenario settings mirrored from the MATLAB virtual thrust script."""
+    """Main scenario/settings container for the workflow.
 
-    reltol: float = 1e-12
-    abstol: float = 1e-12
-    run_scp: bool = True
-    use_opt_dv_dir: bool = True
+    This dataclass keeps the main workflow settings grouped in one place.
+    """
 
-    asteroid_name: str = "Apophis"
-    rho_ast_kg_m3: float = 2400.0
-    asteroid_diameter_m: float = 100.0
-    beta: float = 1.0
-    force_impact: bool = True
-    lead_time_years: int = 3
-    t0_months: int = 24
+    reltol: float = 1e-12           # ODE relative tolerance for propagation and nonlinear checks
+    abstol: float = 1e-12           # ODE absolute tolerance for propagation and nonlinear checks
+    run_scp: bool = True            #  Whether to run the SCP optimization or just do the nominal propagation and plotting
+    use_opt_dv_dir: bool = True     # Whether to use the optimal deflection direction from the linearized problem for the nominal propagation (vs. pure anti-velocity)
 
-    env_years: float = 4.0
-    env_step_min: float = 10.0
+    asteroid_name: str = "Apophis"  # Name of the asteroid to target, must be in `ast_catalog()`
+    rho_ast_kg_m3: float = 2400.0   # Assumed asteroid density for mass and deflection calculations
+    asteroid_diameter_m: float = 100.0  
+    beta: float = 1.0               # Momentum enhancement factor for the kinetic impactor deflection calculation
+    force_impact: bool = True       # Whether to force the zero-month state to be an impact, for easier visualization of the deflection
+    lead_time_years: int = 3        # Lead time in years for the scenario, used to set the month grid and environment span
+    t0_months: int = 24             # Initial month for the nominal propagation, relative to the CA month (0 means start at the CA state, negative means start earlier)
 
-    mass_sc_kg: float = 1000.0
-    vrel_use_mps: float = 10_000.0
-    n_impactors: int = 5
-    cos_gamma: float = 1.0
-    cadence_days: float = 10.0
+    env_years: float = 4.0          # Environment span in years
+    env_step_min: float = 10.0      # Minimum environment step size in days, used for the dense Earth and asteroid histories
 
-    n_segments: int = 750
-    kmax: int = 50
-    delta_u0: float = 0.75
-    eta_good: float = 0.25
-    eta_great: float = 0.75
-    shrink: float = 0.5
-    expand: float = 1.5
+    mass_sc_kg: float = 1000.0      # Spacecraft mass in kg, used for the kinetic impactor deflection calculation
+    vrel_use_mps: float = 10_000.0  # Relative velocity for the impact, used in the deflection calculation
+    n_impactors: int = 5            # Number of impactors to simulate in the deflection calculation, used to compute `dvmax` for the scenario
+    cos_gamma: float = 1.0          # Assumed cosine of the angle between the deflection direction and the asteroid velocity for initial proxies
+    cadence_days: float = 10.0      # Assumed minimum days between impactors in the simulation
 
-    show_plots: bool = True
-    output_dir: Path | None = None
+    n_segments: int = 750           # Number of segments in the SCP trajectory discretization
+    kmax: int = 50                  # Maximum number of SCP iterations  
+    delta_u0: float = 0.75          # Initial trust-region size for the control update in the SCP loop, as a fraction of the max control `amax`
+    eta_good: float = 0.25          # Threshold for accepting a candidate control as a "good" step in the trust-region logic
+    eta_great: float = 0.75         # Threshold for accepting a candidate control as a "great" step in the trust-region logic
+    shrink: float = 0.5             # Factor to shrink the trust region when a step is rejected
+    expand: float = 1.5             # Factor to expand the trust region when a step is accepted as "great"
 
     def months_back(self) -> np.ndarray:
+        """Return the month grid used for impact-relative state extraction."""
+
         return np.arange(0, 12 * self.lead_time_years + 1, dtype=float)
 
     def ode_kwargs(self) -> dict[str, Any]:
+        """Return ODE tolerance settings as one small helper bundle."""
+
         return {"rtol": self.reltol, "atol": self.abstol}
 
 
 @dataclass
 class VirtualThrustRunResult:
-    """Primary outputs from the runnable Python workflow."""
+    """Primary outputs from the runnable Python workflow.
+
+    This keeps the main outputs grouped in one explicit result object.
+    """
 
     config: VirtualThrustConfig
     earth: CelestialBody
@@ -144,7 +168,11 @@ class VirtualThrustRunResult:
 
 @dataclass
 class DiscreteLinearization:
-    """Nominal rollout and interval-wise discrete linearized dynamics."""
+    """Nominal propagation and interval-wise discrete linearized dynamics.
+
+    This stores the `X_nom`, `Ak`, `Bk`, and `ck` arrays built before solving
+    the convex SCP subproblem.
+    """
 
     X_nom: np.ndarray
     Ak: np.ndarray
@@ -154,7 +182,10 @@ class DiscreteLinearization:
 
 @dataclass
 class SCPSubproblemResult:
-    """Solution of one convex SCP subproblem."""
+    """Result of one convex SCP subproblem solve.
+
+    This is the direct CVXPY result of one convex subproblem solve.
+    """
 
     x: np.ndarray
     u: np.ndarray
@@ -166,7 +197,11 @@ class SCPSubproblemResult:
 
 @dataclass
 class SCPResult:
-    """Final SCP optimization state and iteration history."""
+    """Final SCP optimization summary.
+
+    This collects the accepted control, final nonlinear propagation, and iteration
+    history from the SCP loop.
+    """
 
     success: bool
     converged: bool
@@ -179,7 +214,13 @@ class SCPResult:
     accepted_steps: int
 
 
+# ============================================================================
+# Small utility helpers
+# ============================================================================
+
 def _select_mbi_state(mbi_states: list[MBIState], month: float) -> MBIState:
+    """Pick one MBI state by month value."""
+
     for state in mbi_states:
         if np.isclose(state.month, month):
             return state
@@ -187,8 +228,10 @@ def _select_mbi_state(mbi_states: list[MBIState], month: float) -> MBIState:
 
 
 def _make_hover_data(states: np.ndarray, t_hist_s: np.ndarray) -> np.ndarray:
+    """Build shared hover values for Plotly trajectory traces."""
+
     radius_km = np.linalg.norm(states[:, :3], axis=1)
-    return np.column_stack((t_hist_s / 86400.0, radius_km))
+    return np.column_stack((t_hist_s / 86400.0, radius_km, states[:, 2]))
 
 
 def _add_body_trace(
@@ -198,12 +241,13 @@ def _add_body_trace(
     t_hist_s: np.ndarray,
     color: str,
 ) -> None:
+    """Add one body trajectory plus start/end markers to a 2D figure."""
+
     hover_data = _make_hover_data(states, t_hist_s)
     fig.add_trace(
-        go.Scatter3d(
+        go.Scatter(
             x=states[:, 0],
             y=states[:, 1],
-            z=states[:, 2],
             mode="lines",
             name=name,
             line={"color": color, "width": 5},
@@ -214,15 +258,14 @@ def _add_body_trace(
                 "r = %{customdata[1]:.3e} km<br>"
                 "x = %{x:.3e} km<br>"
                 "y = %{y:.3e} km<br>"
-                "z = %{z:.3e} km<extra></extra>"
+                "z = %{customdata[2]:.3e} km<extra></extra>"
             ),
         )
     )
     fig.add_trace(
-        go.Scatter3d(
+        go.Scatter(
             x=[states[0, 0]],
             y=[states[0, 1]],
-            z=[states[0, 2]],
             mode="markers",
             name=f"{name} start",
             marker={"color": color, "size": 5, "symbol": "circle"},
@@ -230,10 +273,9 @@ def _add_body_trace(
         )
     )
     fig.add_trace(
-        go.Scatter3d(
+        go.Scatter(
             x=[states[-1, 0]],
             y=[states[-1, 1]],
-            z=[states[-1, 2]],
             mode="markers",
             name=f"{name} end",
             marker={"color": color, "size": 6, "symbol": "diamond"},
@@ -249,11 +291,12 @@ def _add_state_marker(
     color: str,
     symbol: str,
 ) -> None:
+    """Add one special marker such as `t0` or close approach."""
+
     fig.add_trace(
-        go.Scatter3d(
+        go.Scatter(
             x=[state[0]],
             y=[state[1]],
-            z=[state[2]],
             mode="markers",
             name=label,
             marker={"color": color, "size": 7, "symbol": symbol},
@@ -261,11 +304,16 @@ def _add_state_marker(
                 f"{label}<br>"
                 "x = %{x:.3e} km<br>"
                 "y = %{y:.3e} km<br>"
-                "z = %{z:.3e} km<extra></extra>"
+                f"z = {state[2]:.3e} km<extra></extra>"
             ),
         )
     )
 
+
+# ============================================================================
+# Plotting helpers
+# ============================================================================
+# These helpers build the interactive Plotly figures used by the workflow.
 
 def build_trajectory_figure(
     bodies: list[dict[str, object]],
@@ -275,7 +323,7 @@ def build_trajectory_figure(
     xA_tf: np.ndarray,
     title: str,
 ) -> go.Figure:
-    """Build an interactive 3D Earth/asteroid trajectory plot."""
+    """Build the interactive Plotly version of the main orbit plot in 2D."""
 
     fig = go.Figure()
     colors = ["#1f77b4", "#d95f02", "#2ca02c", "#9467bd"]
@@ -295,14 +343,12 @@ def build_trajectory_figure(
 
     fig.update_layout(
         title=title,
-        scene={
-            "xaxis_title": "x [km]",
-            "yaxis_title": "y [km]",
-            "zaxis_title": "z [km]",
-            "aspectmode": "data",
-        },
+        xaxis_title="x [km]",
+        yaxis_title="y [km]",
+        xaxis={"scaleanchor": "y", "scaleratio": 1},
         legend={"itemsizing": "constant"},
         margin={"l": 0, "r": 0, "t": 50, "b": 0},
+        template="plotly_white",
     )
     return fig
 
@@ -317,7 +363,7 @@ def build_separation_figure(
     title: str = "Earth-Asteroid Separation History",
     time_axis_label: str = "Time [years]",
 ) -> go.Figure:
-    """Build an interactive Earth-asteroid separation timeline."""
+    """Build the interactive Earth-asteroid separation history plot."""
 
     n_sync = min(earth_states.shape[0], asteroid_states.shape[0], t_hist_s.size)
     separation_km = np.linalg.norm(earth_states[:n_sync, :3] - asteroid_states[:n_sync, :3], axis=1)
@@ -372,7 +418,11 @@ def build_control_history_figure(
     *,
     title: str,
 ) -> go.Figure:
-    """Build a step-style control history figure for warm-start or optimized controls."""
+    """Build the control-history plot for SCP results.
+
+    The three panels mirror the usual post-processing view:
+    normalized control, physical acceleration, and accumulated delta-V.
+    """
 
     t_months = t_grid_s / SECONDS_PER_MONTH
     u_stair = np.vstack((U0, U0[-1]))
@@ -479,7 +529,7 @@ def build_optimized_trajectory_figure(
     t_grid_s: np.ndarray,
     title: str,
 ) -> go.Figure:
-    """Overlay the optimized asteroid trajectory on the Earth/nominal-asteroid plot."""
+    """Overlay the optimized asteroid trajectory on the 2D orbit plot."""
 
     fig = go.Figure()
     colors = ["#1f77b4", "#d95f02", "#2ca02c", "#9467bd"]
@@ -494,10 +544,9 @@ def build_optimized_trajectory_figure(
 
     _add_body_trace(fig, "Optimized asteroid", X_opt, t_grid_s, "#2ca02c")
     fig.add_trace(
-        go.Scatter3d(
+        go.Scatter(
             x=X_opt[:-1, 0],
             y=X_opt[:-1, 1],
-            z=X_opt[:-1, 2],
             mode="markers",
             name="Control samples",
             marker={
@@ -511,34 +560,27 @@ def build_optimized_trajectory_figure(
                 "t = %{marker.color:.3f} months<br>"
                 "x = %{x:.3e} km<br>"
                 "y = %{y:.3e} km<br>"
-                "z = %{z:.3e} km<extra></extra>"
+                "xy projection<extra></extra>"
             ),
         )
     )
     fig.update_layout(
         title=title,
-        scene={
-            "xaxis_title": "x [km]",
-            "yaxis_title": "y [km]",
-            "zaxis_title": "z [km]",
-            "aspectmode": "data",
-        },
+        xaxis_title="x [km]",
+        yaxis_title="y [km]",
+        xaxis={"scaleanchor": "y", "scaleratio": 1},
         margin={"l": 0, "r": 0, "t": 50, "b": 0},
+        template="plotly_white",
     )
     return fig
 
 
-def _maybe_write_figure(fig: go.Figure, name: str, output_dir: Path | None) -> None:
-    if output_dir is None:
-        return
-    output_dir.mkdir(parents=True, exist_ok=True)
-    fig.write_html(output_dir / f"{name}.html", include_plotlyjs="cdn")
-
-
-def _maybe_show_figure(fig: go.Figure, show_plots: bool) -> None:
-    if show_plots:
-        fig.show()
-
+# ============================================================================
+# Geometry reconstruction helpers
+# ============================================================================
+# When `force_impact=True`, the zero-month state is forced to be an impact.
+# This helper reconstructs the displayed histories backward from that endpoint
+# so the plots match the printed close-approach values.
 
 def _build_forced_impact_histories(
     env_tspan_s: np.ndarray,
@@ -549,7 +591,7 @@ def _build_forced_impact_histories(
     rtol: float,
     atol: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Reconstruct Earth and asteroid histories backwards from the forced-impact epoch."""
+    """Reconstruct Earth and asteroid histories backward from the forced CA state."""
 
     t_rel_desc = -np.asarray(env_tspan_s, dtype=float)
     _, earth_desc = propagate_two_body(
@@ -569,8 +611,18 @@ def _build_forced_impact_histories(
     return t_rel_desc[::-1], earth_desc[::-1], asteroid_desc[::-1]
 
 
+# ============================================================================
+# SCP linearization / convex subproblem helpers
+# ============================================================================
+# This section contains the SCP helper chain:
+# 1. nonlinear nominal propagation
+# 2. interval-by-interval linearization/discretization
+# 3. convex subproblem solve
+# 4. nonlinear check of the candidate control
+# 5. trust-region accept/reject update
+
 def _control_injection_matrix(amax_kmps2: float) -> np.ndarray:
-    """Map dimensionless control into Cartesian acceleration in km/s^2."""
+    """Map dimensionless control into physical Cartesian acceleration."""
 
     return np.vstack((np.zeros((3, 3)), np.eye(3))) * amax_kmps2
 
@@ -585,11 +637,15 @@ def _build_discrete_linearization(
     rtol: float,
     atol: float,
 ) -> DiscreteLinearization:
-    """Roll out the nominal trajectory and discretize the interval-wise linear model."""
+    """Roll out the current nominal control and build `Ak`, `Bk`, `ck`.
+
+    This first computes `X_nom`, then builds one discrete linear model per
+    ZOH interval.
+    """
 
     del rtol, atol
 
-    X_nom = rollout_zoh_2bp_control(xA_0, t_grid_s, U_nom, mu_sun_km, amax_kmps2)
+    X_nom = propagation_zoh_2bp_control(xA_0, t_grid_s, U_nom, mu_sun_km, amax_kmps2)
     n_intervals = U_nom.shape[0]
     szx, szu = 6, 3
     Ak = np.zeros((n_intervals, szx, szx))
@@ -602,14 +658,14 @@ def _build_discrete_linearization(
         uk_nom = U_nom[k]
         Acont = jacobian_2bp_cartesian(0.0, xk_nom, mu_sun_km)
         f0 = dynamics_2bp_cartesian(0.0, xk_nom, mu_sun_km)
-        f0[3:] += amax_kmps2 * uk_nom
-        ccont = f0 - Acont @ xk_nom - Bctrl @ uk_nom
+        f0[3:] += amax_kmps2 * uk_nom  # add the nominal ZOH control acceleration to vdot
+        ccont = f0 - Acont @ xk_nom - Bctrl @ uk_nom  # affine remainder at the nominal point
 
         Phi0 = np.eye(szx)
         Y0aug = np.concatenate(
             (
                 xk_nom,
-                Phi0.reshape(-1, order="F"),
+                Phi0.reshape(-1, order="F"),  # keep column-major STM packing
                 np.zeros(szx * szu),
                 np.zeros(szx),
             )
@@ -629,7 +685,7 @@ def _build_discrete_linearization(
 
 
 def _candidate_cvxpy_solvers() -> list[tuple[str, dict[str, Any]]]:
-    """Return installed cvxpy solvers in the preferred order for this SOCP."""
+    """Return the preferred cvxpy solver order for this problem."""
 
     if cp is None:
         raise RuntimeError("cvxpy is required for the SCP optimization but is not installed.")
@@ -648,7 +704,7 @@ def _candidate_cvxpy_solvers() -> list[tuple[str, dict[str, Any]]]:
 
 
 def _solve_problem_with_fallback(problem: cp.Problem) -> tuple[str, str]:
-    """Try MOSEK first, then fallback SOCP solvers that cvxpy supports."""
+    """Solve with the best available cvxpy solver, with graceful fallback."""
 
     if cp is None:
         raise RuntimeError("cvxpy is required for the SCP optimization but is not installed.")
@@ -684,14 +740,18 @@ def _solve_scp_subproblem(
     tau_budget_s: float,
     delta_u: float,
 ) -> SCPSubproblemResult:
-    """Build and solve one convex SCP subproblem in cvxpy."""
+    """Build and solve one convex SCP subproblem in cvxpy.
+
+    It uses the discrete linearized dynamics plus the same control, budget,
+    and trust-region constraints as the workflow.
+    """
 
     n_intervals = U_nom.shape[0]
     x = cp.Variable((n_intervals + 1, 6))
     u = cp.Variable((n_intervals, 3))
 
     tau_used = cp.sum(cp.norm(u, 2, axis=1)) * dt_seg_s
-    objective = cp.Maximize(R_nom @ (x[n_intervals, :3] - rnom_tf))
+    objective = cp.Maximize(R_nom @ (x[n_intervals, :3] - rnom_tf))  # linearized terminal objective
     constraints: list[cp.Constraint] = [x[0, :] == xA_0]
 
     for k in range(n_intervals):
@@ -730,7 +790,17 @@ def _run_scp_optimization(
     tau_budget_s: float,
     cfg: VirtualThrustConfig,
 ) -> SCPResult:
-    """Run the discrete linearized SCP loop from the MATLAB script in cvxpy."""
+    """Run the full SCP loop in Python.
+
+    High-level flow:
+    1. nonlinear propagation of the current nominal control
+    2. discrete linearization about that propagation
+    3. convex CVXPY subproblem solve
+    4. nonlinear evaluation of the candidate control
+    5. trust-region accept/reject logic using `rho`
+
+    This function runs the main iterative SCP loop.
+    """
 
     if cp is None:
         return SCPResult(
@@ -794,23 +864,23 @@ def _run_scp_optimization(
             )
 
         solver_used = subproblem.solver
-        X_new = rollout_zoh_2bp_control(xA_0, t_grid_s, subproblem.u, mu_sun_km, amax_kmps2)
+        X_new = propagation_zoh_2bp_control(xA_0, t_grid_s, subproblem.u, mu_sun_km, amax_kmps2)
         x_tf_new = X_new[-1]
         R_new = x_tf_new[:3] - rE_tf
         miss_new = float(np.linalg.norm(R_new))
 
         pred = float(subproblem.predicted_improvement)
-        act = 0.5 * (miss_new**2 - miss_nom**2)
+        act = 0.5 * (miss_new**2 - miss_nom**2)  # actual-improvement proxy used for acceptance
         rho = act / max(pred, 1e-12)
         accepted = bool(rho > cfg.eta_good and miss_new >= miss_nom)
 
         if accepted:
-            U_nom = subproblem.u
+            U_nom = subproblem.u  # accept the candidate as the next nominal control
             accepted_steps += 1
             if rho > cfg.eta_great:
-                delta_u = min(1.0, cfg.expand * delta_u)
+                delta_u = min(1.0, cfg.expand * delta_u)  # expand trust region after a strong step
         else:
-            delta_u = max(1e-3, cfg.shrink * delta_u)
+            delta_u = max(1e-3, cfg.shrink * delta_u)  # reject the step and shrink the trust region
 
         iterations.append(
             {
@@ -832,7 +902,7 @@ def _run_scp_optimization(
             converged = True
             break
 
-    X_opt = rollout_zoh_2bp_control(xA_0, t_grid_s, U_nom, mu_sun_km, amax_kmps2)
+    X_opt = propagation_zoh_2bp_control(xA_0, t_grid_s, U_nom, mu_sun_km, amax_kmps2)
     miss_opt_km = float(np.linalg.norm(X_opt[-1, :3] - rE_tf))
     status = (
         f"SCP completed with solver {solver_used}, "
@@ -855,15 +925,27 @@ def _run_scp_optimization(
     )
 
 
+# ============================================================================
+# Main workflow driver
+# ============================================================================
+# `run_virtual_thrust()` is the main workflow driver. It runs the scenario
+# setup in order and returns a structured result bundle.
+
 def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThrustRunResult:
-    """Run the Python-supported subset of the MATLAB virtual thrust workflow."""
+    """Run the virtual thrust workflow from setup through plotting and SCP.
+
+    In simple terms, this function propagates the scenario, prepares the MBI
+    states, computes the benchmark, builds the plots, and optionally runs SCP.
+    """
 
     cfg = VirtualThrustConfig() if config is None else config
     earth = CelestialBody("Earth")
     sun = CelestialBody("Sun")
 
+    # Basic asteroid mass model used by the impact / proxy-thrust calculations.
     asteroid_mass_kg = (4.0 / 3.0) * np.pi * (cfg.asteroid_diameter_m / 2.0) ** 3 * cfg.rho_ast_kg_m3
 
+    # Build the nominal environment and propagate Earth + asteroid histories.
     env = make_env(
         years=cfg.env_years,
         step_min=cfg.env_step_min,
@@ -878,6 +960,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
 
     nominal_ca, nominal_moid = get_ca_moid(env.X_Earth_hist, asteroid.X_hist, env.t_Earth, asteroid.t_hist)
 
+    # Prepare the impact-relative states used to define the control window.
     asteroids, mbi_sets, _ = prepare_mbi(
         asteroids,
         env,
@@ -897,6 +980,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     xA_tf = state_tf.stateAst.copy()
     close_approach_distance_km = float(np.linalg.norm(xA_tf[:3] - xE_tf[:3]))
 
+    # Choose whether to display the nominal geometry or the forced-impact geometry.
     if cfg.force_impact:
         display_t_s, display_earth_hist, display_asteroid_hist = _build_forced_impact_histories(
             env.tspan,
@@ -930,6 +1014,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
         separation_title = "Earth-Asteroid Separation History"
         separation_time_axis_label = "Time [years]"
 
+    # Convert impact assumptions into proxy acceleration and total delta-V bounds.
     dt_min_s = cfg.cadence_days * 24.0 * 3600.0
     amax_mps2 = compute_amax_from_cadence(
         asteroid_mass_kg,
@@ -959,6 +1044,8 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     dv1_kmps = dv1_mps / 1000.0
     tau_budget_s = dvmax_kmps / amax_kmps2
 
+    # Compute the Conway single-impulse STM benchmark used for comparison and
+    # for the optional warm-start direction.
     tf_sec = 0.0
     t0_sec = -cfg.t0_months * SECONDS_PER_MONTH
     benchmark = conway_max_theoretical_deflection_stm(
@@ -972,6 +1059,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
         atol=cfg.abstol,
     )
 
+    # Build the ZOH time grid and the initial nominal control profile.
     total_duration_s = tf_sec - t0_sec
     dt_seg_s = total_duration_s / cfg.n_segments
     t_grid_s = np.linspace(t0_sec, tf_sec, cfg.n_segments + 1)
@@ -983,6 +1071,8 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
         uhat0 = xA_t0[3:] / np.linalg.norm(xA_t0[3:])
     warm_start_control = np.tile(u0_mag * uhat0, (cfg.n_segments, 1))
 
+    # Always create the main geometry plots. SCP-specific plots are added only
+    # if the optimizer succeeds.
     figures = {
         "trajectories": build_trajectory_figure(
             bodies,
@@ -1004,6 +1094,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     }
     scp_result: SCPResult | None = None
     if cfg.run_scp:
+        # Run the SCP section.
         scp_result = _run_scp_optimization(
             xA_t0,
             xE_tf[:3],
@@ -1015,6 +1106,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
             cfg,
         )
         if scp_result.success and scp_result.U_opt is not None and scp_result.X_opt is not None:
+            # Only add optimized-control plots when a valid optimized propagation exists.
             figures["optimized_control"] = build_control_history_figure(
                 t_grid_s,
                 scp_result.U_opt,
@@ -1033,9 +1125,8 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     else:
         scp_status = "SCP skipped: run_scp=False."
 
-    for name, fig in figures.items():
-        _maybe_write_figure(fig, name, cfg.output_dir)
-        _maybe_show_figure(fig, cfg.show_plots)
+    for fig in figures.values():
+        fig.show()
 
     return VirtualThrustRunResult(
         config=cfg,
@@ -1061,25 +1152,25 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     )
 
 
+# ============================================================================
+# Command-line entry point
+# ============================================================================
+# `main()` is only a thin wrapper for command-line use. The real workflow lives
+# in `run_virtual_thrust()`, which is easier to call from tests or notebooks.
+
 def _build_arg_parser() -> argparse.ArgumentParser:
+    """Create the minimal command-line interface for this workflow."""
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--no-show",
-        action="store_true",
-        help="Create figures without opening interactive browser windows.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=None,
-        help="Optional directory for Plotly HTML outputs.",
-    )
     return parser
 
 
 def main() -> None:
+    """Command-line wrapper around `run_virtual_thrust()`."""
+
     args = _build_arg_parser().parse_args()
-    config = VirtualThrustConfig(show_plots=not args.no_show, output_dir=args.output_dir)
+    del args
+    config = VirtualThrustConfig()
     result = run_virtual_thrust(config)
 
     print(f"Asteroid: {result.asteroid.name}")
@@ -1099,8 +1190,6 @@ def main() -> None:
             print(f"SCP final miss distance: {result.scp.miss_opt_km:.6f} km")
         print(f"SCP accepted steps: {result.scp.accepted_steps}")
     print(result.scp_status)
-    if args.output_dir is not None:
-        print(f"Plotly HTML outputs written to: {args.output_dir.resolve()}")
 
 
 if __name__ == "__main__":

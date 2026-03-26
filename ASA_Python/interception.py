@@ -47,7 +47,7 @@ class AsteroidRecord:
 
 @dataclass
 class ClosestApproach:
-    """MATLAB-style closest-approach or MOID record."""
+    """Closest-approach or MOID record."""
 
     d_km: float
     idxEarth: int
@@ -94,7 +94,7 @@ def make_env(
     atol: float = 1e-13,
     method: str = "DOP853",
 ) -> Environment:
-    """Create the minimal propagation environment used by the MATLAB script."""
+    """Create the minimal propagation environment used by this workflow."""
 
     sun = get_celestial_body("Sun")
     earth = get_celestial_body("Earth")

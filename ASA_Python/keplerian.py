@@ -57,7 +57,7 @@ def jacobian_2bp_cartesian(t: float, x: Iterable[float] | FloatArray, mu: float)
 
 
 def augmented_dynamics_2bp_stm(t: float, x_aug: Iterable[float] | FloatArray, mu: float) -> FloatArray:
-    """State-plus-STM dynamics using MATLAB-compatible column-major packing."""
+    """State-plus-STM dynamics using column-major STM packing."""
 
     y = _as_float_array(x_aug)
     x = y[:6]

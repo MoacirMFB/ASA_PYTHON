@@ -1,4 +1,4 @@
-"""Minimal Python port for the MATLAB virtual thrust workflow."""
+"""Minimal Python package for the virtual thrust workflow."""
 
 from .bodies import CelestialBody, OrbitElements, get_celestial_body
 from .control import linear_discrete_time_matrices

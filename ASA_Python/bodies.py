@@ -10,7 +10,7 @@ AU_KM = 149_597_870.7
 
 @dataclass(frozen=True)
 class GravitationalParameter:
-    """Gravitational parameter with MATLAB-style convenience accessors."""
+    """Gravitational parameter with convenience accessors."""
 
     km: float
 
@@ -25,7 +25,7 @@ class GravitationalParameter:
 
 @dataclass(frozen=True)
 class Length:
-    """Length with MATLAB-style convenience accessors."""
+    """Length with convenience accessors."""
 
     km: float
 
@@ -40,7 +40,7 @@ class Length:
 
 @dataclass(frozen=True)
 class OrbitElements:
-    """Representative body orbit data from the MATLAB repository."""
+    """Representative body orbit data used by this repository."""
 
     aphelion_km: float
     perihelion_km: float
@@ -84,7 +84,7 @@ class _BodyData:
 
 
 class CelestialBody:
-    """Minimal Python equivalent of the MATLAB ``CelestialBody`` class."""
+    """Minimal `CelestialBody` representation used by the Python workflow."""
 
     def __init__(self, body_name: str):
         body = _get_body_data(body_name)
