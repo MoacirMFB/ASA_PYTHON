@@ -13,3 +13,5 @@ dependencies:
   - scs
   - pytest
   - pip
+  - pip:
+      - Mosek

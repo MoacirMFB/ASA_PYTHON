@@ -19,7 +19,7 @@ import cvxpy as cp
 
 # ============================================================================
 # Imports and runtime plumbing
-# ============================================================================
+# ============================================================================clear
 # This top block supports both module execution (`python -m ASA_Python...`)
 # and direct execution from the file path.
 
@@ -44,6 +44,7 @@ SECONDS_PER_MONTH = 30.0 * 86400.0
 # Configuration and result containers
 # ============================================================================
 
+
 @dataclass
 class VirtualThrustConfig:
     """Main scenario/settings container for the workflow.
@@ -51,10 +52,10 @@ class VirtualThrustConfig:
     This dataclass keeps the main workflow settings grouped in one place.
     """
 
-    reltol: float = 1e-12           # ODE relative tolerance for propagation and nonlinear checks
-    abstol: float = 1e-12           # ODE absolute tolerance for propagation and nonlinear checks
-    run_scp: bool = True            #  Whether to run the SCP optimization or just do the nominal propagation and plotting
-    use_opt_dv_dir: bool = True     # Whether to use the optimal deflection direction from the linearized problem for the nominal propagation (vs. pure anti-velocity)
+    reltol: float = 1e-12          # ODE relative tolerance for propagation and nonlinear checks
+    abstol: float = 1e-12          # ODE absolute tolerance for propagation and nonlinear checks
+    run_scp: bool = False           #  Whether to run the SCP optimization or just do the nominal propagation and plotting
+    use_opt_dv_dir: bool = True    # Whether to use the optimal deflection direction from the linearized problem for the nominal propagation (vs. pure anti-velocity)
 
     asteroid_name: str = "Apophis"  # Name of the asteroid to target, must be in the asteroid catalog
     rho_ast_kg_m3: float = 2400.0   # Assumed asteroid density for mass and deflection calculations
@@ -683,6 +684,38 @@ def _solve_problem_with_fallback(problem: cp.Problem) -> tuple[str, str]:
     raise RuntimeError(f"No cvxpy solver succeeded. Installed: {installed}. Attempts: {attempt_text}")
 
 
+def _format_cvx_status(status: str) -> str:
+    """Map CVXPY status strings to short terminal labels."""
+
+    status_map = {
+        cp.OPTIMAL: "Solved",
+        cp.OPTIMAL_INACCURATE: "Solved (Inaccurate)",
+        cp.UNBOUNDED: "Unbounded",
+        cp.UNBOUNDED_INACCURATE: "Unbounded (Inaccurate)",
+        cp.INFEASIBLE: "Infeasible",
+        cp.INFEASIBLE_INACCURATE: "Infeasible (Inaccurate)",
+    }
+    return status_map.get(status, str(status))
+
+
+def _print_scp_iteration(
+    iteration: int,
+    miss_nom_km: float,
+    miss_new_km: float,
+    rho: float,
+    delta_u_step: float,
+    solver_status: str,
+) -> None:
+    """Print one SCP progress line immediately to the terminal."""
+
+    print(
+        f"SCP {iteration:2d} | "
+        f"miss_nom={miss_nom_km:.3f} km -> miss_new={miss_new_km:.3f} km | "
+        f"rho={rho:.3f} | Delta_u={delta_u_step:.3f} | cvx={_format_cvx_status(solver_status)}",
+        flush=True,
+    )
+
+
 def _solve_scp_subproblem(
     Ak: np.ndarray,
     Bk: np.ndarray,
@@ -778,7 +811,10 @@ def _run_scp_optimization(
     accepted_steps = 0
     converged = False
 
+    print("\n=== SCP start (discrete dynamics) ===", flush=True)
+
     for iteration in range(1, cfg.kmax + 1):
+        delta_u_step = float(delta_u)
         linearization = _build_discrete_linearization(
             xA_0,
             t_grid_s,
@@ -834,6 +870,15 @@ def _run_scp_optimization(
         act = 0.5 * (miss_new**2 - miss_nom**2)  # actual-improvement proxy used for acceptance
         rho = act / max(pred, 1e-12)
         accepted = bool(rho > cfg.eta_good and miss_new >= miss_nom)
+
+        _print_scp_iteration(
+            iteration,
+            miss_nom,
+            miss_new,
+            rho,
+            delta_u_step,
+            subproblem.status,
+        )
 
         if accepted:
             U_nom = subproblem.u  # accept the candidate as the next nominal control

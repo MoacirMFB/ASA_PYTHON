@@ -2526,7 +2526,7 @@ classdef KeplerianOrbitalMechanicsLibrary
             function X_cart = coe_to_cartesian(obj, X_coe, mu, varargin)
                 % THIS FUNCTION NEEDS TO BE CHECKED, ONE OF THE ANGLE
                 % COMPUTATIONS IS WRONG. 
-                %COE_TO_CARTESIAN  Convert Keplerian elements to Cartesian state vectors.
+                % COE_TO_CARTESIAN  Convert Keplerian elements to Cartesian state vectors.
                 % X_coe: [a e i RAAN omega M_or_nu], angles in rad. If 'useTA'==true, last col is nu.
 
                 % ---- parse ----
