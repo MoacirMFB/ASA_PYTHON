@@ -1,0 +1,11 @@
+name: virtual_thrust
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - matplotlib
+  - cvxpy
+  - pytest
+  - pip
