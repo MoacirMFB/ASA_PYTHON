@@ -90,7 +90,7 @@ classdef AppliedControlAstronauticsLibrary
                xdot = A * x + B * uk + c;
                
                % Construct the time derivative of the augmented state vector
-               dYdt = [xdot; vec(Adot); vec(Bdot); vec(cdot)];
+               dYdt = [xdot; Adot(:); Bdot(:); cdot(:)];
             end
            
             % 1.3) Discrete Time Linear System Discrete Matrices
