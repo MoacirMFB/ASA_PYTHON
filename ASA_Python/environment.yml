@@ -6,6 +6,7 @@ dependencies:
   - numpy
   - scipy
   - matplotlib
+  - plotly
   - cvxpy
   - pytest
   - pip
