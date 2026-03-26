@@ -30,7 +30,7 @@ from .virtual_thrust_helpers import (
     compute_dvmax_from_impactors,
     conway_max_theoretical_deflection_stm,
     dyn_2bp_zoh,
-    rollout_zoh_2bp_control,
+    propagate_zoh_2bp_control,
 )
 
 __all__ = [
@@ -61,5 +61,5 @@ __all__ = [
     "propagate_earth",
     "propagate_stm_2bp",
     "propagate_two_body",
-    "rollout_zoh_2bp_control",
+    "propagate_zoh_2bp_control",
 ]

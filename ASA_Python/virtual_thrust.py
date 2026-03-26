@@ -23,58 +23,13 @@ import cvxpy as cp
 # This top block supports both module execution (`python -m ASA_Python...`)
 # and direct execution from the file path.
 
-
-if __package__ in {None, ""}:
+try:
+    from . import bodies, control, interception, keplerian, virtual_thrust_helpers
+except ImportError:
     import sys
 
     sys.path.append(str(Path(__file__).resolve().parent.parent))
-    from ASA_Python.bodies import CelestialBody
-    from ASA_Python.interception import (
-        AsteroidRecord,
-        ClosestApproach,
-        MBIState,
-        get_ca_moid,
-        make_bodies_for_plot,
-        make_env,
-        prepare_mbi,
-        propagate_asteroids,
-        propagate_earth,
-        ast_catalog,
-    )
-    from ASA_Python.control import linear_discrete_time_matrices
-    from ASA_Python.keplerian import dynamics_2bp_cartesian, jacobian_2bp_cartesian, propagate_two_body
-    from ASA_Python.virtual_thrust_helpers import (
-        ConwayBenchmark,
-        compute_amax_from_cadence,
-        compute_dv_per_impact,
-        compute_dvmax_from_impactors,
-        conway_max_theoretical_deflection_stm,
-        propagation_zoh_2bp_control,
-    )
-else:
-    from .bodies import CelestialBody
-    from .control import linear_discrete_time_matrices
-    from .interception import (
-        AsteroidRecord,
-        ClosestApproach,
-        MBIState,
-        ast_catalog,
-        get_ca_moid,
-        make_bodies_for_plot,
-        make_env,
-        prepare_mbi,
-        propagate_asteroids,
-        propagate_earth,
-    )
-    from .keplerian import dynamics_2bp_cartesian, jacobian_2bp_cartesian, propagate_two_body
-    from .virtual_thrust_helpers import (
-        ConwayBenchmark,
-        compute_amax_from_cadence,
-        compute_dv_per_impact,
-        compute_dvmax_from_impactors,
-        conway_max_theoretical_deflection_stm,
-        propagation_zoh_2bp_control,
-    )
+    from ASA_Python import bodies, control, interception, keplerian, virtual_thrust_helpers
 
 
 # ============================================================================
@@ -101,7 +56,7 @@ class VirtualThrustConfig:
     run_scp: bool = True            #  Whether to run the SCP optimization or just do the nominal propagation and plotting
     use_opt_dv_dir: bool = True     # Whether to use the optimal deflection direction from the linearized problem for the nominal propagation (vs. pure anti-velocity)
 
-    asteroid_name: str = "Apophis"  # Name of the asteroid to target, must be in `ast_catalog()`
+    asteroid_name: str = "Apophis"  # Name of the asteroid to target, must be in the asteroid catalog
     rho_ast_kg_m3: float = 2400.0   # Assumed asteroid density for mass and deflection calculations
     asteroid_diameter_m: float = 100.0  
     beta: float = 1.0               # Momentum enhancement factor for the kinetic impactor deflection calculation
@@ -145,13 +100,13 @@ class VirtualThrustRunResult:
     """
 
     config: VirtualThrustConfig
-    earth: CelestialBody
-    sun: CelestialBody
-    asteroid: AsteroidRecord
-    ca: ClosestApproach
-    moid: ClosestApproach
-    mbi_states: list[MBIState]
-    benchmark: ConwayBenchmark
+    earth: bodies.CelestialBody
+    sun: bodies.CelestialBody
+    asteroid: interception.AsteroidRecord
+    ca: interception.ClosestApproach
+    moid: interception.ClosestApproach
+    mbi_states: list[interception.MBIState]
+    benchmark: virtual_thrust_helpers.ConwayBenchmark
     asteroid_mass_kg: float
     close_approach_distance_km: float
     amax_mps2: float
@@ -199,8 +154,8 @@ class SCPSubproblemResult:
 class SCPResult:
     """Final SCP optimization summary.
 
-    This collects the accepted control, final nonlinear propagation, and iteration
-    history from the SCP loop.
+    This collects the accepted control, final nonlinear propagation, and
+    iteration history from the SCP loop.
     """
 
     success: bool
@@ -218,7 +173,7 @@ class SCPResult:
 # Small utility helpers
 # ============================================================================
 
-def _select_mbi_state(mbi_states: list[MBIState], month: float) -> MBIState:
+def _select_mbi_state(mbi_states: list[interception.MBIState], month: float) -> interception.MBIState:
     """Pick one MBI state by month value."""
 
     for state in mbi_states:
@@ -357,8 +312,8 @@ def build_separation_figure(
     earth_states: np.ndarray,
     asteroid_states: np.ndarray,
     t_hist_s: np.ndarray,
-    ca: ClosestApproach,
-    moid: ClosestApproach,
+    ca: interception.ClosestApproach,
+    moid: interception.ClosestApproach,
     *,
     title: str = "Earth-Asteroid Separation History",
     time_axis_label: str = "Time [years]",
@@ -594,14 +549,14 @@ def _build_forced_impact_histories(
     """Reconstruct Earth and asteroid histories backward from the forced CA state."""
 
     t_rel_desc = -np.asarray(env_tspan_s, dtype=float)
-    _, earth_desc = propagate_two_body(
+    _, earth_desc = keplerian.propagate_two_body(
         xE_tf,
         t_rel_desc,
         mu_sun_km,
         rtol=rtol,
         atol=atol,
     )
-    _, asteroid_desc = propagate_two_body(
+    _, asteroid_desc = keplerian.propagate_two_body(
         xA_tf,
         t_rel_desc,
         mu_sun_km,
@@ -637,7 +592,7 @@ def _build_discrete_linearization(
     rtol: float,
     atol: float,
 ) -> DiscreteLinearization:
-    """Roll out the current nominal control and build `Ak`, `Bk`, `ck`.
+    """Propagate the current nominal control and build `Ak`, `Bk`, `ck`.
 
     This first computes `X_nom`, then builds one discrete linear model per
     ZOH interval.
@@ -645,7 +600,7 @@ def _build_discrete_linearization(
 
     del rtol, atol
 
-    X_nom = propagation_zoh_2bp_control(xA_0, t_grid_s, U_nom, mu_sun_km, amax_kmps2)
+    X_nom = virtual_thrust_helpers.propagate_zoh_2bp_control(xA_0, t_grid_s, U_nom, mu_sun_km, amax_kmps2)
     n_intervals = U_nom.shape[0]
     szx, szu = 6, 3
     Ak = np.zeros((n_intervals, szx, szx))
@@ -656,8 +611,8 @@ def _build_discrete_linearization(
     for k in range(n_intervals):
         xk_nom = X_nom[k]
         uk_nom = U_nom[k]
-        Acont = jacobian_2bp_cartesian(0.0, xk_nom, mu_sun_km)
-        f0 = dynamics_2bp_cartesian(0.0, xk_nom, mu_sun_km)
+        Acont = keplerian.jacobian_2bp_cartesian(0.0, xk_nom, mu_sun_km)
+        f0 = keplerian.dynamics_2bp_cartesian(0.0, xk_nom, mu_sun_km)
         f0[3:] += amax_kmps2 * uk_nom  # add the nominal ZOH control acceleration to vdot
         ccont = f0 - Acont @ xk_nom - Bctrl @ uk_nom  # affine remainder at the nominal point
 
@@ -670,7 +625,7 @@ def _build_discrete_linearization(
                 np.zeros(szx),
             )
         )
-        Ak[k], Bk[k], ck[k], _ = linear_discrete_time_matrices(
+        Ak[k], Bk[k], ck[k], _ = control.linear_discrete_time_matrices(
             float(t_grid_s[k]),
             float(t_grid_s[k + 1]),
             Y0aug,
@@ -864,7 +819,13 @@ def _run_scp_optimization(
             )
 
         solver_used = subproblem.solver
-        X_new = propagation_zoh_2bp_control(xA_0, t_grid_s, subproblem.u, mu_sun_km, amax_kmps2)
+        X_new = virtual_thrust_helpers.propagate_zoh_2bp_control(
+            xA_0,
+            t_grid_s,
+            subproblem.u,
+            mu_sun_km,
+            amax_kmps2,
+        )
         x_tf_new = X_new[-1]
         R_new = x_tf_new[:3] - rE_tf
         miss_new = float(np.linalg.norm(R_new))
@@ -902,7 +863,7 @@ def _run_scp_optimization(
             converged = True
             break
 
-    X_opt = propagation_zoh_2bp_control(xA_0, t_grid_s, U_nom, mu_sun_km, amax_kmps2)
+    X_opt = virtual_thrust_helpers.propagate_zoh_2bp_control(xA_0, t_grid_s, U_nom, mu_sun_km, amax_kmps2)
     miss_opt_km = float(np.linalg.norm(X_opt[-1, :3] - rE_tf))
     status = (
         f"SCP completed with solver {solver_used}, "
@@ -939,29 +900,34 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     """
 
     cfg = VirtualThrustConfig() if config is None else config
-    earth = CelestialBody("Earth")
-    sun = CelestialBody("Sun")
+    earth = bodies.CelestialBody("Earth")
+    sun = bodies.CelestialBody("Sun")
 
     # Basic asteroid mass model used by the impact / proxy-thrust calculations.
     asteroid_mass_kg = (4.0 / 3.0) * np.pi * (cfg.asteroid_diameter_m / 2.0) ** 3 * cfg.rho_ast_kg_m3
 
     # Build the nominal environment and propagate Earth + asteroid histories.
-    env = make_env(
+    env = interception.make_env(
         years=cfg.env_years,
         step_min=cfg.env_step_min,
         rtol=cfg.reltol,
         atol=cfg.abstol,
     )
-    propagate_earth(env)
-    asteroids = propagate_asteroids(ast_catalog(cfg.asteroid_name), env)
+    interception.propagate_earth(env)
+    asteroids = interception.propagate_asteroids(interception.ast_catalog(cfg.asteroid_name), env)
     asteroid = asteroids[0]
     if env.t_Earth is None or env.X_Earth_hist is None or asteroid.t_hist is None or asteroid.X_hist is None:
         raise RuntimeError("Propagation failed to produce Earth and asteroid histories.")
 
-    nominal_ca, nominal_moid = get_ca_moid(env.X_Earth_hist, asteroid.X_hist, env.t_Earth, asteroid.t_hist)
+    nominal_ca, nominal_moid = interception.get_ca_moid(
+        env.X_Earth_hist,
+        asteroid.X_hist,
+        env.t_Earth,
+        asteroid.t_hist,
+    )
 
     # Prepare the impact-relative states used to define the control window.
-    asteroids, mbi_sets, _ = prepare_mbi(
+    asteroids, mbi_sets, _ = interception.prepare_mbi(
         asteroids,
         env,
         cfg.months_back(),
@@ -990,13 +956,13 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
             rtol=cfg.reltol,
             atol=cfg.abstol,
         )
-        ca, moid = get_ca_moid(
+        ca, moid = interception.get_ca_moid(
             display_earth_hist,
             display_asteroid_hist,
             display_t_s,
             display_t_s,
         )
-        bodies = [
+        plot_bodies = [
             {"name": "Earth", "X_hist": display_earth_hist, "t_hist": display_t_s},
             {"name": asteroid.name, "X_hist": display_asteroid_hist, "t_hist": display_t_s},
         ]
@@ -1009,14 +975,14 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
         display_t_s = env.t_Earth
         display_earth_hist = env.X_Earth_hist
         display_asteroid_hist = asteroid.X_hist
-        bodies = make_bodies_for_plot([asteroid], env)
+        plot_bodies = interception.make_bodies_for_plot([asteroid], env)
         trajectory_title = "Earth + Asteroid Trajectories"
         separation_title = "Earth-Asteroid Separation History"
         separation_time_axis_label = "Time [years]"
 
     # Convert impact assumptions into proxy acceleration and total delta-V bounds.
     dt_min_s = cfg.cadence_days * 24.0 * 3600.0
-    amax_mps2 = compute_amax_from_cadence(
+    amax_mps2 = virtual_thrust_helpers.compute_amax_from_cadence(
         asteroid_mass_kg,
         cfg.mass_sc_kg,
         cfg.vrel_use_mps,
@@ -1026,14 +992,14 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     )
     amax_kmps2 = amax_mps2 / 1000.0
 
-    dvmax_mps = compute_dvmax_from_impactors(
+    dvmax_mps = virtual_thrust_helpers.compute_dvmax_from_impactors(
         asteroid_mass_kg,
         cfg.mass_sc_kg * np.ones(cfg.n_impactors),
         cfg.vrel_use_mps * np.ones(cfg.n_impactors),
         cfg.beta,
         cfg.cos_gamma * np.ones(cfg.n_impactors),
     )
-    dv1_mps = compute_dv_per_impact(
+    dv1_mps = virtual_thrust_helpers.compute_dv_per_impact(
         asteroid_mass_kg,
         cfg.mass_sc_kg,
         cfg.vrel_use_mps,
@@ -1048,7 +1014,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     # for the optional warm-start direction.
     tf_sec = 0.0
     t0_sec = -cfg.t0_months * SECONDS_PER_MONTH
-    benchmark = conway_max_theoretical_deflection_stm(
+    benchmark = virtual_thrust_helpers.conway_max_theoretical_deflection_stm(
         xA_t0,
         xE_tf[:3],
         dv1_kmps,
@@ -1075,7 +1041,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     # if the optimizer succeeds.
     figures = {
         "trajectories": build_trajectory_figure(
-            bodies,
+            plot_bodies,
             xA_t0,
             xE_t0,
             xE_tf,
@@ -1116,7 +1082,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
                 title="Optimized Control Profile (SCP)",
             )
             figures["optimized_trajectory"] = build_optimized_trajectory_figure(
-                bodies,
+                plot_bodies,
                 scp_result.X_opt,
                 t_grid_s,
                 "Earth + Nominal Asteroid + Optimized Asteroid",

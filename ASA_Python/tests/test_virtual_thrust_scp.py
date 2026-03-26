@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+import plotly.graph_objects as go
 
 cvxpy = pytest.importorskip("cvxpy")
 
@@ -38,8 +39,9 @@ def test_scp_subproblem_builds_and_solves_small_synthetic_case():
     assert result.status in {cvxpy.OPTIMAL, cvxpy.OPTIMAL_INACCURATE}
 
 
-def test_reduced_size_virtual_thrust_runs_one_scp_iteration():
+def test_reduced_size_virtual_thrust_runs_one_scp_iteration(monkeypatch):
     assert cvxpy is not None
+    monkeypatch.setattr(go.Figure, "show", lambda self: None)
 
     config = VirtualThrustConfig(
         env_years=0.2,
@@ -47,7 +49,6 @@ def test_reduced_size_virtual_thrust_runs_one_scp_iteration():
         t0_months=1,
         n_segments=4,
         kmax=1,
-        show_plots=False,
         run_scp=True,
     )
     result = run_virtual_thrust(config)

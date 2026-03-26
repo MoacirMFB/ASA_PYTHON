@@ -100,7 +100,7 @@ def dyn_2bp_zoh(
     return xdot
 
 
-def rollout_zoh_2bp_control(
+def propagate_zoh_2bp_control(
     x0: Iterable[float] | FloatArray,
     t_grid: Iterable[float] | FloatArray,
     U: Iterable[Iterable[float]] | FloatArray,
@@ -111,7 +111,7 @@ def rollout_zoh_2bp_control(
     atol: float = 1e-12,
     method: str = "DOP853",
 ) -> FloatArray:
-    """Roll out piecewise-constant 2BP dynamics over ``t_grid``."""
+    """Propagate piecewise-constant 2BP dynamics over ``t_grid``."""
 
     state0 = np.asarray(x0, dtype=float).reshape(6)
     time_grid = np.asarray(t_grid, dtype=float).reshape(-1)

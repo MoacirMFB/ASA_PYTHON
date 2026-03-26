@@ -6,7 +6,7 @@ from ..virtual_thrust_helpers import (
     compute_dv_per_impact,
     compute_dvmax_from_impactors,
     conway_max_theoretical_deflection_stm,
-    rollout_zoh_2bp_control,
+    propagate_zoh_2bp_control,
 )
 
 
@@ -27,13 +27,13 @@ def test_delta_v_and_cadence_helpers_are_consistent():
     np.testing.assert_allclose(amax, dv_one / dt_min, rtol=1e-12, atol=1e-12)
 
 
-def test_rollout_zoh_2bp_control_matches_unforced_two_body_when_control_is_zero():
+def test_propagate_zoh_2bp_control_matches_unforced_two_body_when_control_is_zero():
     mu = 398600.4418
     x0 = np.array([7000.0, 0.0, 0.0, 0.0, np.sqrt(mu / 7000.0), 0.0])
     t_grid = np.array([0.0, 25.0, 50.0, 75.0])
     U = np.zeros((3, 3))
 
-    piecewise = rollout_zoh_2bp_control(x0, t_grid, U, mu, 0.0, rtol=1e-11, atol=1e-11)
+    piecewise = propagate_zoh_2bp_control(x0, t_grid, U, mu, 0.0, rtol=1e-11, atol=1e-11)
     _, direct = propagate_two_body(x0, t_grid, mu, rtol=1e-11, atol=1e-11)
 
     np.testing.assert_allclose(piecewise, direct, rtol=1e-10, atol=1e-10)
