@@ -8,19 +8,6 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.integrate import solve_ivp
 
-try:
-    import spiceypy
-except ImportError:
-    spiceypy = None
-
-try:
-    from .elements import kep2cart as elements_kep2cart
-except ImportError:
-    try:
-        from elements import kep2cart as elements_kep2cart
-    except ImportError:
-        elements_kep2cart = None
-
 FloatArray = NDArray[np.float64]
 
 
@@ -179,18 +166,6 @@ def true_anomaly_from_eccentric_anomaly(eccentricity: float, eccentric_anomaly: 
     return 2.0 * np.arctan2(numerator, denominator)
 
 
-def mean_anomaly_from_true_anomaly(eccentricity: float, true_anomaly: float) -> float:
-    """Convert true anomaly to mean anomaly for elliptic orbits."""
-
-    ecc = float(eccentricity)
-    half = 0.5 * float(true_anomaly)
-    eccentric_anomaly = 2.0 * np.arctan2(
-        np.sqrt(1.0 - ecc) * np.sin(half),
-        np.sqrt(1.0 + ecc) * np.cos(half),
-    )
-    return float(np.mod(eccentric_anomaly - ecc * np.sin(eccentric_anomaly), 2.0 * np.pi))
-
-
 def _pqw_to_ijk_rotation(raan: float, inclination: float, arg_peri: float) -> FloatArray:
     cos_O, sin_O = np.cos(raan), np.sin(raan)
     cos_i, sin_i = np.cos(inclination), np.sin(inclination)
@@ -241,83 +216,5 @@ def coe_to_cartesian(
         rotation = _pqw_to_ijk_rotation(raan, inclination, arg_peri)
         states[idx, :3] = rotation @ r_pqw
         states[idx, 3:] = rotation @ v_pqw
-
-    return states[0] if squeeze_output else states
-
-
-def coe_to_cartesian_spice(
-    x_coe: Iterable[float] | FloatArray,
-    mu: float,
-    *,
-    use_true_anomaly: bool = False,
-) -> FloatArray:
-    """Convert orbital elements to Cartesian state with SpiceyPy `conics`."""
-
-    if spiceypy is None:
-        raise ImportError("spiceypy is not installed.")
-
-    elements = np.asarray(x_coe, dtype=float)
-    squeeze_output = elements.ndim == 1
-    elements_2d = np.atleast_2d(elements)
-    if elements_2d.shape[1] != 6:
-        raise ValueError("Orbital element input must have six columns.")
-
-    states = np.zeros((elements_2d.shape[0], 6), dtype=float)
-    for idx, row in enumerate(elements_2d):
-        semi_major_axis, eccentricity, inclination, raan, arg_peri, anomaly = row
-        mean_anomaly = (
-            mean_anomaly_from_true_anomaly(eccentricity, anomaly)
-            if use_true_anomaly
-            else float(np.mod(anomaly, 2.0 * np.pi))
-        )
-        rp = semi_major_axis * (1.0 - eccentricity)
-        elements_spice = np.array(
-            [rp, eccentricity, inclination, raan, arg_peri, mean_anomaly, 0.0, mu],
-            dtype=float,
-        )
-        states[idx] = np.asarray(spiceypy.conics(elements_spice, 0.0), dtype=float)
-
-    return states[0] if squeeze_output else states
-
-
-def coe_to_cartesian_elements(
-    x_coe: Iterable[float] | FloatArray,
-    mu: float,
-    *,
-    use_true_anomaly: bool = False,
-) -> FloatArray:
-    """Convert orbital elements to Cartesian state with `elements.kep2cart`."""
-
-    if elements_kep2cart is None:
-        raise ImportError("elements.kep2cart is not available.")
-
-    elements = np.asarray(x_coe, dtype=float)
-    squeeze_output = elements.ndim == 1
-    elements_2d = np.atleast_2d(elements)
-    if elements_2d.shape[1] != 6:
-        raise ValueError("Orbital element input must have six columns.")
-
-    states = np.zeros((elements_2d.shape[0], 6), dtype=float)
-    for idx, row in enumerate(elements_2d):
-        semi_major_axis, eccentricity, inclination, raan, arg_peri, anomaly = row
-        true_anomaly = (
-            anomaly
-            if use_true_anomaly
-            else true_anomaly_from_eccentric_anomaly(
-                eccentricity,
-                solve_keplers_equation(anomaly, eccentricity),
-            )
-        )
-        r_eci, v_eci = elements_kep2cart(
-            semi_major_axis,
-            eccentricity,
-            inclination,
-            raan,
-            arg_peri,
-            true_anomaly,
-            mu=mu,
-        )
-        states[idx, :3] = np.asarray(r_eci, dtype=float)
-        states[idx, 3:] = np.asarray(v_eci, dtype=float)
 
     return states[0] if squeeze_output else states

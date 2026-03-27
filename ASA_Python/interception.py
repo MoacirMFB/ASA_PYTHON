@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from scipy.spatial import cKDTree
 
 from .bodies import AU_KM, CelestialBody, get_celestial_body
-from .keplerian import coe_to_cartesian, coe_to_cartesian_elements, coe_to_cartesian_spice, propagate_two_body
+from .keplerian import coe_to_cartesian, propagate_two_body
 
 FloatArray = NDArray[np.float64]
 
@@ -41,7 +41,6 @@ class AsteroidRecord:
     coe: FloatArray
     t_hist: FloatArray | None = None
     X_hist: FloatArray | None = None
-    init_state_km: FloatArray | None = None
     MOID_pre_km: float | None = None
     CA_pre_km: float | None = None
 
@@ -172,8 +171,6 @@ def ast_catalog(names: str | Sequence[str]) -> list[AsteroidRecord]:
 def propagate_asteroids(
     asteroids: list[AsteroidRecord],
     env: Environment,
-    *,
-    converter: str = "repo",
 ) -> list[AsteroidRecord]:
     """Propagate asteroid heliocentric histories from catalog COEs."""
 
@@ -181,14 +178,7 @@ def propagate_asteroids(
         coe = asteroid.coe.copy()
         x_coe = coe.copy()
         x_coe[0] *= env.AU2km
-        if converter == "repo":
-            x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=True)
-        elif converter == "spice":
-            x0 = coe_to_cartesian_spice(x_coe, env.muSun_km, use_true_anomaly=True)
-        elif converter == "elements":
-            x0 = coe_to_cartesian_elements(x_coe, env.muSun_km, use_true_anomaly=True)
-        else:
-            raise ValueError(f"Unsupported asteroid converter: {converter}")
+        x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=True)
         t_hist, x_hist = propagate_two_body(
             x0,
             env.tspan,
@@ -197,7 +187,6 @@ def propagate_asteroids(
             atol=env.atol,
             method=env.method,
         )
-        asteroid.init_state_km = x0.copy()
         asteroid.t_hist = t_hist
         asteroid.X_hist = x_hist
     return asteroids

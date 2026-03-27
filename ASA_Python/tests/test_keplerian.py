@@ -1,10 +1,7 @@
 import numpy as np
-import pytest
 
 from ..keplerian import (
     coe_to_cartesian,
-    coe_to_cartesian_elements,
-    coe_to_cartesian_spice,
     dynamics_2bp_cartesian,
     jacobian_2bp_cartesian,
     propagate_stm_2bp,
@@ -61,50 +58,6 @@ def test_coe_to_cartesian_matches_repository_apophis_case():
             0.0,
         ],
         mu_sun_km,
-        use_true_anomaly=True,
-    )
-    expected = np.array(
-        [
-            97174473.6704443,
-            -54653892.9939707,
-            5214352.61923254,
-            18.4922263853679,
-            32.7541623882571,
-            -1.30982313944453,
-        ]
-    )
-    np.testing.assert_allclose(state, expected, rtol=1e-10, atol=1e-8)
-
-
-def test_coe_to_cartesian_spice_returns_valid_state_when_available():
-    pytest.importorskip("spiceypy")
-    state = coe_to_cartesian_spice(
-        [
-            0.9225521 * 149597870.7,
-            0.1912907,
-            np.deg2rad(3.33974),
-            np.deg2rad(203.91537),
-            np.deg2rad(126.68323),
-            0.0,
-        ],
-        132712440018.0,
-        use_true_anomaly=True,
-    )
-    assert state.shape == (6,)
-    assert np.all(np.isfinite(state))
-
-
-def test_coe_to_cartesian_elements_matches_aerospace_sign_convention():
-    state = coe_to_cartesian_elements(
-        [
-            0.9225521 * 149597870.7,
-            0.1912907,
-            np.deg2rad(3.33974),
-            np.deg2rad(203.91537),
-            np.deg2rad(126.68323),
-            0.0,
-        ],
-        132712440018.0,
         use_true_anomaly=True,
     )
     expected = np.array(

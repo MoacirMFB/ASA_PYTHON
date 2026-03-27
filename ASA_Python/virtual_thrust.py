@@ -39,9 +39,6 @@ except ImportError:
 # Keep the same "30 days per month" convention used throughout this workflow.
 SECONDS_PER_MONTH = 30.0 * 86400.0
 
-# Allow moving only the legend in the interactive Plotly viewer.
-PLOTLY_SHOW_CONFIG = {"edits": {"legendPosition": True}}
-
 
 # ============================================================================
 # Configuration and result containers
@@ -59,8 +56,6 @@ class VirtualThrustConfig:
     abstol: float = 1e-12          # ODE absolute tolerance for propagation and nonlinear checks
     run_scp: bool = True           #  Whether to run the SCP optimization or just do the nominal propagation and plotting
     use_opt_dv_dir: bool = True    # Whether to use the optimal deflection direction from the linearized problem for the nominal propagation (vs. pure anti-velocity)
-    asteroid_converter: str = "spice"  # Asteroid COE-to-Cartesian converter: "repo", "spice", or "elements"
-
     asteroid_name: str = "Apophis"  # Name of the asteroid to target, must be in the asteroid catalog
     rho_ast_kg_m3: float = 2400.0   # Assumed asteroid density for mass and deflection calculations
     asteroid_diameter_m: float = 100.0  
@@ -211,48 +206,16 @@ def _print_conway_diagnostics(result: VirtualThrustRunResult) -> None:
 
     asteroid_coe = result.asteroid.coe.copy()
     asteroid_coe[0] *= bodies.AU_KM
-    repo_x0 = keplerian.coe_to_cartesian(
+    asteroid_x0 = keplerian.coe_to_cartesian(
         asteroid_coe,
         result.sun.mu.km,
         use_true_anomaly=True,
     )
-    active_x0 = result.asteroid.init_state_km if result.asteroid.init_state_km is not None else repo_x0
     xA_t0 = _select_mbi_state(result.mbi_states, result.config.t0_months).stateAst
 
     print("\n=== Conway benchmark diagnostics ===")
-    print(f"Asteroid initial Cartesian state X0 [km, km/s] ({result.config.asteroid_converter}):")
-    print(_format_array_block(active_x0))
-    if result.config.asteroid_converter != "repo":
-        print("\nAsteroid initial Cartesian state X0 [km, km/s] (repo):")
-        print(_format_array_block(repo_x0))
-        print("\nDelta X0 [active - repo]:")
-        print(_format_array_block(np.asarray(active_x0) - np.asarray(repo_x0)))
-    try:
-        spice_x0 = keplerian.coe_to_cartesian_spice(
-            asteroid_coe,
-            result.sun.mu.km,
-            use_true_anomaly=True,
-        )
-    except ImportError:
-        spice_x0 = None
-    if spice_x0 is not None and result.config.asteroid_converter != "spice":
-        print("\nAsteroid initial Cartesian state X0 [km, km/s] (spice):")
-        print(_format_array_block(spice_x0))
-        print("\nDelta X0 [spice - repo]:")
-        print(_format_array_block(np.asarray(spice_x0) - np.asarray(repo_x0)))
-    try:
-        elements_x0 = keplerian.coe_to_cartesian_elements(
-            asteroid_coe,
-            result.sun.mu.km,
-            use_true_anomaly=True,
-        )
-    except ImportError:
-        elements_x0 = None
-    if elements_x0 is not None and result.config.asteroid_converter != "elements":
-        print("\nAsteroid initial Cartesian state X0 [km, km/s] (elements):")
-        print(_format_array_block(elements_x0))
-        print("\nDelta X0 [elements - repo]:")
-        print(_format_array_block(np.asarray(elements_x0) - np.asarray(repo_x0)))
+    print("Asteroid initial Cartesian state X0 [km, km/s]:")
+    print(_format_array_block(asteroid_x0))
     print(f"\nAsteroid state at t0 = -{result.config.t0_months:g} months [km, km/s]:")
     print(_format_array_block(xA_t0))
     print("\nPhi_rv [km / (km/s)]:")
@@ -1098,11 +1061,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
         atol=cfg.abstol,
     )
     interception.propagate_earth(env)
-    asteroids = interception.propagate_asteroids(
-        interception.ast_catalog(cfg.asteroid_name),
-        env,
-        converter=cfg.asteroid_converter,
-    )
+    asteroids = interception.propagate_asteroids(interception.ast_catalog(cfg.asteroid_name), env)
     asteroid = asteroids[0]
     if env.t_Earth is None or env.X_Earth_hist is None or asteroid.t_hist is None or asteroid.X_hist is None:
         raise RuntimeError("Propagation failed to produce Earth and asteroid histories.")
@@ -1281,7 +1240,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
         scp_status = "SCP skipped: run_scp=False."
 
     for fig in figures.values():
-        fig.show(config=PLOTLY_SHOW_CONFIG)
+        fig.show(config={"edits": {"legendPosition": True}})
 
     return VirtualThrustRunResult(
         config=cfg,

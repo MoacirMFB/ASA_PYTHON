@@ -18,8 +18,6 @@ from .interception import (
 )
 from .keplerian import (
     coe_to_cartesian,
-    coe_to_cartesian_elements,
-    coe_to_cartesian_spice,
     dynamics_2bp_cartesian,
     jacobian_2bp_cartesian,
     propagate_stm_2bp,
@@ -45,8 +43,6 @@ __all__ = [
     "OrbitElements",
     "ast_catalog",
     "coe_to_cartesian",
-    "coe_to_cartesian_elements",
-    "coe_to_cartesian_spice",
     "compute_amax_from_cadence",
     "compute_dv_per_impact",
     "compute_dvmax_from_impactors",
