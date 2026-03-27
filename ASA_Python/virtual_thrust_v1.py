@@ -73,7 +73,7 @@ class VirtualThrustConfig:
     cos_gamma: float = 1.0          # Assumed cosine of the angle between the deflection direction and the asteroid velocity for initial proxies
     cadence_days: float = 10.0      # Assumed minimum days between impactors in the simulation
 
-    n_segments: int = 750           # Number of segments in the SCP trajectory discretization
+    n_segments: int = 1400          # Number of segments in the SCP trajectory discretization
     kmax: int = 50                  # Maximum number of SCP iterations  
     delta_u0: float = 0.75          # Initial trust-region size for the control update in the SCP loop, as a fraction of the max control `amax`
     eta_good: float = 0.25          # Threshold for accepting a candidate control as a "good" step in the trust-region logic
@@ -239,7 +239,7 @@ def _add_arrow(
         ayref="y",
         text="",
         showarrow=True,
-        arrowhead=3,
+        arrowhead=5,
         arrowsize=1.2,
         arrowwidth=width,
         arrowcolor=color,
