@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 import plotly.graph_objects as go
+from plotly.colors import sample_colorscale
 from plotly.subplots import make_subplots
 
 import cvxpy as cp
@@ -250,29 +251,52 @@ def _add_control_arrows(
     fig: go.Figure,
     states: np.ndarray,
     controls: np.ndarray,
-    color: str,
-) -> None:
+    t_grid_s: np.ndarray,
+) -> np.ndarray:
     """Draw a small set of visible xy control-direction arrows along the path."""
 
     xy = np.asarray(states, dtype=float)[:, :2]
-    uxy = np.asarray(controls, dtype=float)[:, :2]
+    controls = np.asarray(controls, dtype=float)
+    uxy = controls[:, :2]
     n_segments = min(xy.shape[0] - 1, uxy.shape[0])
     if n_segments <= 0:
         return
 
     span = max(np.ptp(xy[:, 0]), np.ptp(xy[:, 1]), 1.0)
     arrow_length = 0.035 * span
-    arrow_count = min(40, n_segments)              
+    arrow_count = min(40, n_segments)
+    control_norms = np.linalg.norm(controls[:n_segments], axis=1)
+    max_control_norm = float(np.max(control_norms))
+    if max_control_norm < 1e-12:
+        return np.array([], dtype=int)
+    min_arrow_control_fraction = 0.02
+    min_control_norm = min_arrow_control_fraction * max_control_norm
     sample_idx = np.unique(np.linspace(0, n_segments - 1, arrow_count, dtype=int))
+    time_months = np.asarray(t_grid_s[:n_segments], dtype=float) / SECONDS_PER_MONTH
+    if time_months.size == 0:
+        return np.array([], dtype=int)
+    t_min = float(np.min(time_months))
+    t_max = float(np.max(time_months))
+    plotted_idx: list[int] = []
 
     for idx in sample_idx:
         direction_xy = uxy[idx]
+        control_norm = control_norms[idx]
         norm_xy = np.linalg.norm(direction_xy)
-        if norm_xy < 1e-12:
+        if control_norm < min_control_norm or norm_xy < 1e-12:
             continue
+        scale = control_norm / max_control_norm
         tail_xy = xy[idx]
-        head_xy = tail_xy + arrow_length * direction_xy / norm_xy
-        _add_arrow(fig, tail_xy, head_xy, color, width=1.7)
+        head_xy = tail_xy + arrow_length * scale * direction_xy / norm_xy
+        if np.isclose(t_max, t_min):
+            color_fraction = 0.5
+        else:
+            color_fraction = (time_months[idx] - t_min) / (t_max - t_min)
+        arrow_color = sample_colorscale("Turbo", [float(color_fraction)])[0]
+        _add_arrow(fig, tail_xy, head_xy, arrow_color, width=1.7)
+        plotted_idx.append(int(idx))
+
+    return np.asarray(plotted_idx, dtype=int)
 
 
 def _add_body_trace(
@@ -351,6 +375,50 @@ def _add_state_marker(
     )
 
 
+def _add_sun_marker(fig: go.Figure) -> None:
+    """Add the Sun at the heliocentric origin."""
+
+    fig.add_trace(
+        go.Scatter(
+            x=[0.0],
+            y=[0.0],
+            mode="markers",
+            name="Sun",
+            marker={
+                "color": "#f1c40f",
+                "size": 14,
+                "symbol": "circle",
+                "line": {"color": "#9a7d0a", "width": 1.5},
+            },
+            hovertemplate="Sun<br>x = 0 km<br>y = 0 km<extra></extra>",
+        )
+    )
+
+
+def _add_info_box(fig: go.Figure, lines: list[str]) -> None:
+    """Add a compact scenario summary box in the top-right corner."""
+
+    if not lines:
+        return
+
+    fig.add_annotation(
+        x=0.99,
+        y=0.99,
+        xref="paper",
+        yref="paper",
+        xanchor="right",
+        yanchor="top",
+        align="left",
+        text="<br>".join(lines),
+        showarrow=False,
+        bordercolor="#9aa1a6",
+        borderwidth=1,
+        borderpad=6,
+        bgcolor="rgba(255,255,255,0.88)",
+        font={"size": 11, "color": "#243447"},
+    )
+
+
 # ============================================================================
 # Plotting helpers
 # ============================================================================
@@ -363,6 +431,7 @@ def build_trajectory_figure(
     xE_tf: np.ndarray,
     xA_tf: np.ndarray,
     title: str,
+    info_lines: list[str] | None = None,
 ) -> go.Figure:
     """Build the interactive Plotly version of the main orbit plot in 2D."""
 
@@ -377,10 +446,12 @@ def build_trajectory_figure(
             colors[idx % len(colors)],
         )
 
+    _add_sun_marker(fig)
     _add_state_marker(fig, "Earth @ t0", xE_t0, "#1f77b4", "x")
     _add_state_marker(fig, "Asteroid @ t0", xA_t0, "#d95f02", "x")
     _add_state_marker(fig, "Earth @ CA", xE_tf, "#1f77b4", "cross")
     _add_state_marker(fig, "Asteroid @ CA", xA_tf, "#d95f02", "cross")
+    _add_info_box(fig, [] if info_lines is None else info_lines)
 
     fig.update_layout(
         title=title,
@@ -403,6 +474,10 @@ def build_separation_figure(
     *,
     title: str = "Earth-Asteroid Separation History",
     time_axis_label: str = "Time [years]",
+    info_lines: list[str] | None = None,
+    controlled_earth_states: np.ndarray | None = None,
+    controlled_asteroid_states: np.ndarray | None = None,
+    controlled_t_hist_s: np.ndarray | None = None,
 ) -> go.Figure:
     """Build the interactive Earth-asteroid separation history plot."""
 
@@ -421,6 +496,27 @@ def build_separation_figure(
             hovertemplate="t = %{x:.3f} years<br>d = %{y:.3e} km<extra></extra>",
         )
     )
+    if (
+        controlled_earth_states is not None
+        and controlled_asteroid_states is not None
+        and controlled_t_hist_s is not None
+    ):
+        n_ctrl = min(controlled_earth_states.shape[0], controlled_asteroid_states.shape[0], controlled_t_hist_s.size)
+        controlled_sep_km = np.linalg.norm(
+            controlled_earth_states[:n_ctrl, :3] - controlled_asteroid_states[:n_ctrl, :3],
+            axis=1,
+        )
+        controlled_t_years = controlled_t_hist_s[:n_ctrl] / (365.25 * 86400.0)
+        fig.add_trace(
+            go.Scatter(
+                x=controlled_t_years,
+                y=controlled_sep_km,
+                mode="lines",
+                name="Controlled separation",
+                line={"color": "#1b7f3a", "width": 3},
+                hovertemplate="t = %{x:.3f} years<br>d = %{y:.3e} km<extra></extra>",
+            )
+        )
     fig.add_trace(
         go.Scatter(
             x=[ca.timeEarth / (365.25 * 86400.0)],
@@ -441,6 +537,7 @@ def build_separation_figure(
             hovertemplate="MOID<br>t = %{x:.3f} years<br>d = %{y:.3e} km<extra></extra>",
         )
     )
+    _add_info_box(fig, [] if info_lines is None else info_lines)
     fig.update_layout(
         title=title,
         xaxis_title=time_axis_label,
@@ -458,6 +555,7 @@ def build_control_history_figure(
     dvmax_mps: float,
     *,
     title: str,
+    info_lines: list[str] | None = None,
 ) -> go.Figure:
     """Build the control-history plot for SCP results.
 
@@ -561,6 +659,7 @@ def build_control_history_figure(
     fig.update_yaxes(title_text="delta-V [m/s]", row=3, col=1)
     fig.update_xaxes(title_text="Time [months] (CA at 0)", row=3, col=1)
     fig.update_layout(title=title, template="plotly_white", height=900)
+    _add_info_box(fig, [] if info_lines is None else info_lines)
     return fig
 
 
@@ -570,6 +669,7 @@ def build_optimized_trajectory_figure(
     U_opt: np.ndarray,
     t_grid_s: np.ndarray,
     title: str,
+    info_lines: list[str] | None = None,
 ) -> go.Figure:
     """Overlay the optimized asteroid trajectory and visible control arrows."""
 
@@ -584,29 +684,27 @@ def build_optimized_trajectory_figure(
             colors[idx % len(colors)],
         )
 
+    _add_sun_marker(fig)
     _add_body_trace(fig, "Optimized asteroid", X_opt, t_grid_s, "#2ca02c")
-    _add_control_arrows(fig, X_opt, U_opt, "#1b7f3a")
-    fig.add_trace(
-        go.Scatter(
-            x=X_opt[:-1, 0],
-            y=X_opt[:-1, 1],
-            mode="markers",
-            name="Control samples",
-            marker={
-                "size": 4,
-                "color": t_grid_s[:-1] / SECONDS_PER_MONTH,
-                "colorscale": "Turbo",
-                "colorbar": {"title": "Time [months]"},
-            },
-            hovertemplate=(
-                "Control sample<br>"
-                "t = %{marker.color:.3f} months<br>"
-                "x = %{x:.3e} km<br>"
-                "y = %{y:.3e} km<br>"
-                "xy projection<extra></extra>"
-            ),
+    plotted_idx = _add_control_arrows(fig, X_opt, U_opt, t_grid_s)
+    if plotted_idx.size > 0:
+        fig.add_trace(
+            go.Scatter(
+                x=X_opt[plotted_idx, 0],
+                y=X_opt[plotted_idx, 1],
+                mode="markers",
+                name="Control time scale",
+                marker={
+                    "size": 1,
+                    "opacity": 0,
+                    "color": t_grid_s[plotted_idx] / SECONDS_PER_MONTH,
+                    "colorscale": "Turbo",
+                    "colorbar": {"title": "Time [months]"},
+                },
+                hoverinfo="skip",
+                showlegend=False,
+            )
         )
-    )
     fig.add_trace(
         go.Scatter(
             x=[None],
@@ -617,6 +715,7 @@ def build_optimized_trajectory_figure(
             hoverinfo="skip",
         )
     )
+    _add_info_box(fig, [] if info_lines is None else info_lines)
     fig.update_layout(
         title=title,
         xaxis_title="x [km]",
@@ -1143,6 +1242,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
     total_duration_s = tf_sec - t0_sec
     dt_seg_s = total_duration_s / cfg.n_segments
     t_grid_s = np.linspace(t0_sec, tf_sec, cfg.n_segments + 1)
+    dt_seg_hours = dt_seg_s / 3600.0
     u0_mag_max = tau_budget_s / total_duration_s
     u0_mag = 0.5 * min(0.01, u0_mag_max)
     if cfg.use_opt_dv_dir:
@@ -1153,6 +1253,18 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
 
     # Always create the main geometry plots. SCP-specific plots are added only
     # if the optimizer succeeds.
+    geometry_info_lines = [
+        f"Asteroid: {asteroid.name}",
+        f"First control epoch: -{cfg.t0_months} months",
+        f"Segments: {cfg.n_segments} (dt = {dt_seg_hours:.2f} h)",
+        f"CA: {close_approach_distance_km:.3f} km",
+    ]
+    separation_info_lines = [
+        f"Asteroid: {asteroid.name}",
+        f"First control epoch: -{cfg.t0_months} months",
+        f"Sampled CA: {ca.d_km:.3f} km",
+        f"Sampled MOID: {moid.d_km:.3f} km",
+    ]
     figures = {
         "trajectories": build_trajectory_figure(
             plot_bodies,
@@ -1160,19 +1272,12 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
             xE_t0,
             xE_tf,
             xA_tf,
-            trajectory_title,
-        ),
-        "separation": build_separation_figure(
-            display_earth_hist,
-            display_asteroid_hist,
-            display_t_s,
-            ca,
-            moid,
-            title=separation_title,
-            time_axis_label=separation_time_axis_label,
+            f"{trajectory_title} | {asteroid.name}",
+            geometry_info_lines,
         ),
     }
     scp_result: SCPResult | None = None
+    controlled_earth_hist: np.ndarray | None = None
     if cfg.run_scp:
         # Run the SCP section.
         scp_result = _run_scp_optimization(
@@ -1193,18 +1298,57 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
                 amax_kmps2,
                 dt_seg_s,
                 dvmax_mps,
-                title="Optimized Control Profile (SCP)",
+                title=f"Optimized Control Profile (SCP) | {asteroid.name}",
+                info_lines=[
+                    f"Asteroid: {asteroid.name}",
+                    f"First control epoch: -{cfg.t0_months} months",
+                    f"Segments: {cfg.n_segments} (dt = {dt_seg_hours:.2f} h)",
+                    f"a_max: {amax_mps2 * 1e3:.3e} mm/s^2",
+                ],
             )
             figures["optimized_trajectory"] = build_optimized_trajectory_figure(
                 plot_bodies,
                 scp_result.X_opt,
                 scp_result.U_opt,
                 t_grid_s,
-                "Earth + Nominal Asteroid + Optimized Asteroid",
+                f"Earth + Nominal Asteroid + Optimized Asteroid | {asteroid.name}",
+                info_lines=[
+                    f"Asteroid: {asteroid.name}",
+                    f"First control epoch: -{cfg.t0_months} months",
+                    f"Final miss: {scp_result.miss_opt_km:.3f} km",
+                    f"Accepted SCP steps: {scp_result.accepted_steps}",
+                ],
+            )
+            _, controlled_earth_hist = keplerian.propagate_two_body(
+                xE_t0,
+                t_grid_s,
+                sun.mu.km,
+                rtol=cfg.reltol,
+                atol=cfg.abstol,
             )
         scp_status = scp_result.status
     else:
         scp_status = "SCP skipped: run_scp=False."
+
+    final_distance_tf_km = (
+        scp_result.miss_opt_km
+        if scp_result is not None and scp_result.miss_opt_km is not None
+        else close_approach_distance_km
+    )
+    separation_info_lines.append(f"Final distance @ tf: {final_distance_tf_km:.3f} km")
+    figures["separation"] = build_separation_figure(
+        display_earth_hist,
+        display_asteroid_hist,
+        display_t_s,
+        ca,
+        moid,
+        title=f"{separation_title} | {asteroid.name}",
+        time_axis_label=separation_time_axis_label,
+        info_lines=separation_info_lines,
+        controlled_earth_states=controlled_earth_hist,
+        controlled_asteroid_states=None if scp_result is None else scp_result.X_opt,
+        controlled_t_hist_s=None if scp_result is None else t_grid_s,
+    )
 
     for fig in figures.values():
         fig.show(config={"edits": {"legendPosition": True}})
