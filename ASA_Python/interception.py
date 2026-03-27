@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from scipy.spatial import cKDTree
 
 from .bodies import AU_KM, CelestialBody, get_celestial_body
-from .keplerian import coe_to_cartesian, coe_to_cartesian_spice, propagate_two_body
+from .keplerian import coe_to_cartesian, coe_to_cartesian_elements, coe_to_cartesian_spice, propagate_two_body
 
 FloatArray = NDArray[np.float64]
 
@@ -185,6 +185,8 @@ def propagate_asteroids(
             x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=True)
         elif converter == "spice":
             x0 = coe_to_cartesian_spice(x_coe, env.muSun_km, use_true_anomaly=True)
+        elif converter == "elements":
+            x0 = coe_to_cartesian_elements(x_coe, env.muSun_km, use_true_anomaly=True)
         else:
             raise ValueError(f"Unsupported asteroid converter: {converter}")
         t_hist, x_hist = propagate_two_body(

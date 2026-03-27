@@ -39,6 +39,9 @@ except ImportError:
 # Keep the same "30 days per month" convention used throughout this workflow.
 SECONDS_PER_MONTH = 30.0 * 86400.0
 
+# Allow moving only the legend in the interactive Plotly viewer.
+PLOTLY_SHOW_CONFIG = {"edits": {"legendPosition": True}}
+
 
 # ============================================================================
 # Configuration and result containers
@@ -56,7 +59,7 @@ class VirtualThrustConfig:
     abstol: float = 1e-12          # ODE absolute tolerance for propagation and nonlinear checks
     run_scp: bool = True           #  Whether to run the SCP optimization or just do the nominal propagation and plotting
     use_opt_dv_dir: bool = True    # Whether to use the optimal deflection direction from the linearized problem for the nominal propagation (vs. pure anti-velocity)
-    asteroid_converter: str = "spice"  # Asteroid COE-to-Cartesian converter: "repo" or "spice"
+    asteroid_converter: str = "spice"  # Asteroid COE-to-Cartesian converter: "repo", "spice", or "elements"
 
     asteroid_name: str = "Apophis"  # Name of the asteroid to target, must be in the asteroid catalog
     rho_ast_kg_m3: float = 2400.0   # Assumed asteroid density for mass and deflection calculations
@@ -237,27 +240,24 @@ def _print_conway_diagnostics(result: VirtualThrustRunResult) -> None:
         print(_format_array_block(spice_x0))
         print("\nDelta X0 [spice - repo]:")
         print(_format_array_block(np.asarray(spice_x0) - np.asarray(repo_x0)))
+    try:
+        elements_x0 = keplerian.coe_to_cartesian_elements(
+            asteroid_coe,
+            result.sun.mu.km,
+            use_true_anomaly=True,
+        )
+    except ImportError:
+        elements_x0 = None
+    if elements_x0 is not None and result.config.asteroid_converter != "elements":
+        print("\nAsteroid initial Cartesian state X0 [km, km/s] (elements):")
+        print(_format_array_block(elements_x0))
+        print("\nDelta X0 [elements - repo]:")
+        print(_format_array_block(np.asarray(elements_x0) - np.asarray(repo_x0)))
     print(f"\nAsteroid state at t0 = -{result.config.t0_months:g} months [km, km/s]:")
     print(_format_array_block(xA_t0))
     print("\nPhi_rv [km / (km/s)]:")
     print(_format_array_block(result.benchmark.Phi_rv))
     print(f"\nConway max theoretical deflection: {result.benchmark.dr_max_km:.12f} km")
-
-
-def _initial_direction_arrow(states: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
-    """Pick a short visible arrow segment near the start of a 2D trajectory."""
-
-    xy = np.asarray(states, dtype=float)[:, :2]
-    if xy.shape[0] < 2:
-        return None
-
-    start = xy[0]
-    span = max(np.ptp(xy[:, 0]), np.ptp(xy[:, 1]), 1.0)
-    target_distance = 0.04 * span
-    for point in xy[1:]:
-        if np.linalg.norm(point - start) >= target_distance:
-            return start, point
-    return start, xy[-1]
 
 
 def _add_arrow(
@@ -365,10 +365,6 @@ def _add_body_trace(
             hovertemplate=f"{name} end<extra></extra>",
         )
     )
-
-    arrow_segment = _initial_direction_arrow(states)
-    if arrow_segment is not None:
-        _add_arrow(fig, arrow_segment[0], arrow_segment[1], color)
 
 
 def _add_state_marker(
@@ -1285,7 +1281,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
         scp_status = "SCP skipped: run_scp=False."
 
     for fig in figures.values():
-        fig.show()
+        fig.show(config=PLOTLY_SHOW_CONFIG)
 
     return VirtualThrustRunResult(
         config=cfg,

@@ -2524,8 +2524,6 @@ classdef KeplerianOrbitalMechanicsLibrary
 
 
             function X_cart = coe_to_cartesian(obj, X_coe, mu, varargin)
-                % THIS FUNCTION NEEDS TO BE CHECKED, ONE OF THE ANGLE
-                % COMPUTATIONS IS WRONG. 
                 % COE_TO_CARTESIAN  Convert Keplerian elements to Cartesian state vectors.
                 % X_coe: [a e i RAAN omega M_or_nu], angles in rad. If 'useTA'==true, last col is nu.
 
@@ -2565,8 +2563,15 @@ classdef KeplerianOrbitalMechanicsLibrary
                     r_pqw = [ r_mag*cos(nu);  r_mag*sin(nu);  0 ];
                     v_pqw = sqrt(mu/p_slr)*[ -sin(nu);  e+cos(nu);  0 ];
 
-                    % DCM PQW->IJK using COLUMN convention (this is the key change)
-                    C_I_P = obj.dcmFromEulerAngleSeq([3 1 3],[RAAN, inc, omega],'col');
+                    % Standard PQW->IJK direction cosine matrix:
+                    % C_I_P = R3(RAAN) * R1(inc) * R3(omega)
+                    cO = cos(RAAN);  sO = sin(RAAN);
+                    ci = cos(inc);   si = sin(inc);
+                    cw = cos(omega); sw = sin(omega);
+                    C_I_P = [ ...
+                        cO*cw - sO*sw*ci,   -cO*sw - sO*cw*ci,   sO*si; ...
+                        sO*cw + cO*sw*ci,   -sO*sw + cO*cw*ci,  -cO*si; ...
+                        sw*si,               cw*si,               ci    ];
 
                     % transform to inertial (column), then store as row
                     r_ijk = C_I_P * r_pqw;

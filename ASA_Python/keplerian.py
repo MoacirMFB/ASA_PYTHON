@@ -13,6 +13,14 @@ try:
 except ImportError:
     spiceypy = None
 
+try:
+    from .elements import kep2cart as elements_kep2cart
+except ImportError:
+    try:
+        from elements import kep2cart as elements_kep2cart
+    except ImportError:
+        elements_kep2cart = None
+
 FloatArray = NDArray[np.float64]
 
 
@@ -189,9 +197,9 @@ def _pqw_to_ijk_rotation(raan: float, inclination: float, arg_peri: float) -> Fl
     cos_w, sin_w = np.cos(arg_peri), np.sin(arg_peri)
     return np.array(
         [
-            [cos_O * cos_w - sin_O * sin_w * cos_i, sin_O * cos_w + cos_O * sin_w * cos_i, sin_w * sin_i],
-            [-cos_O * sin_w - sin_O * cos_w * cos_i, -sin_O * sin_w + cos_O * cos_w * cos_i, cos_w * sin_i],
-            [sin_O * sin_i, -cos_O * sin_i, cos_i],
+            [cos_O * cos_w - sin_O * sin_w * cos_i, -cos_O * sin_w - sin_O * cos_w * cos_i, sin_O * sin_i],
+            [sin_O * cos_w + cos_O * sin_w * cos_i, -sin_O * sin_w + cos_O * cos_w * cos_i, -cos_O * sin_i],
+            [sin_w * sin_i, cos_w * sin_i, cos_i],
         ],
         dtype=float,
     )
@@ -268,5 +276,48 @@ def coe_to_cartesian_spice(
             dtype=float,
         )
         states[idx] = np.asarray(spiceypy.conics(elements_spice, 0.0), dtype=float)
+
+    return states[0] if squeeze_output else states
+
+
+def coe_to_cartesian_elements(
+    x_coe: Iterable[float] | FloatArray,
+    mu: float,
+    *,
+    use_true_anomaly: bool = False,
+) -> FloatArray:
+    """Convert orbital elements to Cartesian state with `elements.kep2cart`."""
+
+    if elements_kep2cart is None:
+        raise ImportError("elements.kep2cart is not available.")
+
+    elements = np.asarray(x_coe, dtype=float)
+    squeeze_output = elements.ndim == 1
+    elements_2d = np.atleast_2d(elements)
+    if elements_2d.shape[1] != 6:
+        raise ValueError("Orbital element input must have six columns.")
+
+    states = np.zeros((elements_2d.shape[0], 6), dtype=float)
+    for idx, row in enumerate(elements_2d):
+        semi_major_axis, eccentricity, inclination, raan, arg_peri, anomaly = row
+        true_anomaly = (
+            anomaly
+            if use_true_anomaly
+            else true_anomaly_from_eccentric_anomaly(
+                eccentricity,
+                solve_keplers_equation(anomaly, eccentricity),
+            )
+        )
+        r_eci, v_eci = elements_kep2cart(
+            semi_major_axis,
+            eccentricity,
+            inclination,
+            raan,
+            arg_peri,
+            true_anomaly,
+            mu=mu,
+        )
+        states[idx, :3] = np.asarray(r_eci, dtype=float)
+        states[idx, 3:] = np.asarray(v_eci, dtype=float)
 
     return states[0] if squeeze_output else states
