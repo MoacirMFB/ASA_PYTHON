@@ -86,11 +86,6 @@ class VirtualThrustConfig:
 
         return np.arange(0, 12 * self.lead_time_years + 1, dtype=float)
 
-    def ode_kwargs(self) -> dict[str, Any]:
-        """Return ODE tolerance settings as one small helper bundle."""
-
-        return {"rtol": self.reltol, "atol": self.abstol}
-
 
 @dataclass
 class VirtualThrustRunResult:
@@ -742,48 +737,20 @@ def _build_discrete_linearization(
     return DiscreteLinearization(X_nom=X_nom, Ak=Ak, Bk=Bk, ck=ck)
 
 
-def _candidate_cvxpy_solvers() -> list[tuple[str, dict[str, Any]]]:
-    """Return the preferred cvxpy solver order for this problem."""
-
-    if cp is None:
-        raise RuntimeError("cvxpy is required for the SCP optimization but is not installed.")
-
-    installed = set(cp.installed_solvers())
-    candidates: list[tuple[str, dict[str, Any]]] = []
-    if "MOSEK" in installed:
-        candidates.append(("MOSEK", {}))
-    if "CLARABEL" in installed:
-        candidates.append(("CLARABEL", {}))
-    if "ECOS" in installed:
-        candidates.append(("ECOS", {"abstol": 1e-8, "reltol": 1e-8, "feastol": 1e-8}))
-    if "SCS" in installed:
-        candidates.append(("SCS", {"eps": 1e-5, "max_iters": 20_000}))
-    return candidates
-
-
 def _solve_problem_with_fallback(problem: cp.Problem) -> tuple[str, str]:
-    """Solve with the best available cvxpy solver, with graceful fallback."""
+    """Try MOSEK first, then fall back to cvxpy's default solver choice."""
 
     if cp is None:
         raise RuntimeError("cvxpy is required for the SCP optimization but is not installed.")
 
-    attempts: list[str] = []
-    for solver, solver_options in _candidate_cvxpy_solvers():
-        try:
-            problem.solve(solver=solver, warm_start=True, verbose=False, **solver_options)
-        except Exception as exc:
-            attempts.append(f"{solver}: {type(exc).__name__}")
-            continue
+    try:
+        problem.solve(solver="MOSEK", warm_start=True, verbose=False)
+    except Exception:
+        problem.solve(warm_start=True, verbose=False)
 
-        status = str(problem.status)
-        if status in {cp.OPTIMAL, cp.OPTIMAL_INACCURATE}:
-            solver_name = problem.solver_stats.solver_name if problem.solver_stats is not None else solver
-            return solver_name or solver, status
-        attempts.append(f"{solver}: {status}")
-
-    installed = ", ".join(cp.installed_solvers()) or "none"
-    attempt_text = "; ".join(attempts) or "no compatible solver installed"
-    raise RuntimeError(f"No cvxpy solver succeeded. Installed: {installed}. Attempts: {attempt_text}")
+    status = str(problem.status)
+    solver_name = problem.solver_stats.solver_name if problem.solver_stats is not None else "default"
+    return solver_name or "default", status
 
 
 def _format_cvx_status(status: str) -> str:
@@ -1298,6 +1265,9 @@ def main() -> None:
     print(f"Proxy acceleration bound: {result.amax_mps2:.6e} m/s^2")
     print(f"Warm-start thrust-time budget: {result.tau_budget_s:.6f} s")
     print(f"Conway max theoretical deflection: {result.benchmark.dr_max_km:.6f} km")
+    if result.t_grid_s.size >= 2:
+        dt_seg_hours = (result.t_grid_s[1] - result.t_grid_s[0]) / 3600.0
+        print(f"Interval duration: {dt_seg_hours:.6f} hours")
     _print_conway_diagnostics(result)
     if result.scp is not None:
         print(f"SCP solver: {result.scp.solver}")
