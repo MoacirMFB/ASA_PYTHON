@@ -123,11 +123,22 @@ xA_0 = xA_t0(:);   % 6x1
 % Fixed Earth state at tf (for v1 objective)
 rE_tf = xE_tf(1:3);   % 3x1
 
-% Rebuild the asteroid's initial Cartesian state from the catalog COEs so
-% it can be printed alongside the benchmark STM terms for parity checks.
+% Rebuild the asteroid's initial Cartesian state with the same Aerospace
+% Toolbox helper used in the propagation path so the debug print matches
+% the actual initializer under test.
 coe_debug = asteroid{1}.coe;
 coe_debug = [coe_debug(1) * env.AU2km, coe_debug(2:6)];
-X0_debug = kep.coe_to_cartesian(coe_debug, muSun_km, 'useTA', true);
+[r0_debug_m, v0_debug_m_s] = keplerian2ijk( ...
+    1000 * coe_debug(1), ...
+    coe_debug(2), ...
+    rad2deg(coe_debug(3)), ...
+    rad2deg(coe_debug(4)), ...
+    rad2deg(coe_debug(5)), ...
+    rad2deg(coe_debug(6)), ...
+    'CentralBody', 'Sun');
+X0_debug = [r0_debug_m(:) / 1000; v0_debug_m_s(:) / 1000];
+
+% X0_debug = kep.coe_to_cartesian(coe_debug, muSun_km, 'useTA', true);
 
 %% Conway max-theoretical STM benchmark (always runs)
 bench_conway_single = conway_max_theoretical_deflection_stm(xA_0, rE_tf, dV1_kmps, tf_sec, t0_sec, kep, muSun_km, odeOpt);

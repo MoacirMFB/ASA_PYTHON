@@ -1,7 +1,9 @@
 import numpy as np
+import pytest
 
 from ..keplerian import (
     coe_to_cartesian,
+    coe_to_cartesian_spice,
     dynamics_2bp_cartesian,
     jacobian_2bp_cartesian,
     propagate_stm_2bp,
@@ -71,3 +73,21 @@ def test_coe_to_cartesian_matches_repository_apophis_case():
         ]
     )
     np.testing.assert_allclose(state, expected, rtol=1e-10, atol=1e-8)
+
+
+def test_coe_to_cartesian_spice_returns_valid_state_when_available():
+    pytest.importorskip("spiceypy")
+    state = coe_to_cartesian_spice(
+        [
+            0.9225521 * 149597870.7,
+            0.1912907,
+            np.deg2rad(3.33974),
+            np.deg2rad(203.91537),
+            np.deg2rad(126.68323),
+            0.0,
+        ],
+        132712440018.0,
+        use_true_anomaly=True,
+    )
+    assert state.shape == (6,)
+    assert np.all(np.isfinite(state))

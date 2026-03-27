@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from scipy.spatial import cKDTree
 
 from .bodies import AU_KM, CelestialBody, get_celestial_body
-from .keplerian import coe_to_cartesian, propagate_two_body
+from .keplerian import coe_to_cartesian, coe_to_cartesian_spice, propagate_two_body
 
 FloatArray = NDArray[np.float64]
 
@@ -41,6 +41,7 @@ class AsteroidRecord:
     coe: FloatArray
     t_hist: FloatArray | None = None
     X_hist: FloatArray | None = None
+    init_state_km: FloatArray | None = None
     MOID_pre_km: float | None = None
     CA_pre_km: float | None = None
 
@@ -133,7 +134,7 @@ def propagate_earth(env: Environment) -> tuple[FloatArray, FloatArray]:
         ],
         dtype=float,
     )
-    x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=True)
+    x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=False)
     t_earth, x_earth = propagate_two_body(
         x0,
         env.tspan,
@@ -168,14 +169,24 @@ def ast_catalog(names: str | Sequence[str]) -> list[AsteroidRecord]:
     return asteroids
 
 
-def propagate_asteroids(asteroids: list[AsteroidRecord], env: Environment) -> list[AsteroidRecord]:
+def propagate_asteroids(
+    asteroids: list[AsteroidRecord],
+    env: Environment,
+    *,
+    converter: str = "repo",
+) -> list[AsteroidRecord]:
     """Propagate asteroid heliocentric histories from catalog COEs."""
 
     for asteroid in asteroids:
         coe = asteroid.coe.copy()
         x_coe = coe.copy()
         x_coe[0] *= env.AU2km
-        x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=True)
+        if converter == "repo":
+            x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=True)
+        elif converter == "spice":
+            x0 = coe_to_cartesian_spice(x_coe, env.muSun_km, use_true_anomaly=True)
+        else:
+            raise ValueError(f"Unsupported asteroid converter: {converter}")
         t_hist, x_hist = propagate_two_body(
             x0,
             env.tspan,
@@ -184,6 +195,7 @@ def propagate_asteroids(asteroids: list[AsteroidRecord], env: Environment) -> li
             atol=env.atol,
             method=env.method,
         )
+        asteroid.init_state_km = x0.copy()
         asteroid.t_hist = t_hist
         asteroid.X_hist = x_hist
     return asteroids
