@@ -1,7 +1,7 @@
 import numpy as np
 
 from ..keplerian import propagate_two_body
-from ..virtual_thrust_helpers import (
+from ..virtual_thrust.virtual_thrust_helpers import (
     compute_amax_from_cadence,
     compute_dv_per_impact,
     compute_dvmax_from_impactors,

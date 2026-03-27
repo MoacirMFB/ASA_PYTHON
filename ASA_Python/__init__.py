@@ -23,7 +23,7 @@ from .keplerian import (
     propagate_stm_2bp,
     propagate_two_body,
 )
-from .virtual_thrust_helpers import (
+from .virtual_thrust.virtual_thrust_helpers import (
     ConwayBenchmark,
     compute_amax_from_cadence,
     compute_dv_per_impact,
