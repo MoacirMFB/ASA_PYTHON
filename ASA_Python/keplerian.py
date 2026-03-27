@@ -172,9 +172,9 @@ def _pqw_to_ijk_rotation(raan: float, inclination: float, arg_peri: float) -> Fl
     cos_w, sin_w = np.cos(arg_peri), np.sin(arg_peri)
     return np.array(
         [
-            [cos_O * cos_w - sin_O * sin_w * cos_i, -cos_O * sin_w - sin_O * cos_w * cos_i, sin_O * sin_i],
-            [sin_O * cos_w + cos_O * sin_w * cos_i, -sin_O * sin_w + cos_O * cos_w * cos_i, -cos_O * sin_i],
-            [sin_w * sin_i, cos_w * sin_i, cos_i],
+            [cos_O * cos_w - sin_O * sin_w * cos_i, sin_O * cos_w + cos_O * sin_w * cos_i, sin_w * sin_i],
+            [-cos_O * sin_w - sin_O * cos_w * cos_i, -sin_O * sin_w + cos_O * cos_w * cos_i, cos_w * sin_i],
+            [sin_O * sin_i, -cos_O * sin_i, cos_i],
         ],
         dtype=float,
     )

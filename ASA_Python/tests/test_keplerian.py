@@ -44,3 +44,30 @@ def test_coe_to_cartesian_circular_equatorial_case():
     state = coe_to_cartesian([7000.0, 0.0, 0.0, 0.0, 0.0, 0.0], mu, use_true_anomaly=True)
     expected_speed = np.sqrt(mu / 7000.0)
     np.testing.assert_allclose(state, np.array([7000.0, 0.0, 0.0, 0.0, expected_speed, 0.0]), rtol=1e-12, atol=1e-12)
+
+
+def test_coe_to_cartesian_matches_repository_apophis_case():
+    mu_sun_km = 132712440018.0
+    state = coe_to_cartesian(
+        [
+            0.9225521 * 149597870.7,
+            0.1912907,
+            np.deg2rad(3.33974),
+            np.deg2rad(203.91537),
+            np.deg2rad(126.68323),
+            0.0,
+        ],
+        mu_sun_km,
+        use_true_anomaly=True,
+    )
+    expected = np.array(
+        [
+            97174473.6704443,
+            54838761.2108104,
+            -2635860.67496235,
+            -18.4298868147233,
+            32.7541623911314,
+            2.0043316594643,
+        ]
+    )
+    np.testing.assert_allclose(state, expected, rtol=1e-10, atol=1e-8)

@@ -123,11 +123,18 @@ xA_0 = xA_t0(:);   % 6x1
 % Fixed Earth state at tf (for v1 objective)
 rE_tf = xE_tf(1:3);   % 3x1
 
+% Rebuild the asteroid's initial Cartesian state from the catalog COEs so
+% it can be printed alongside the benchmark STM terms for parity checks.
+coe_debug = asteroid{1}.coe;
+coe_debug = [coe_debug(1) * env.AU2km, coe_debug(2:6)];
+X0_debug = kep.coe_to_cartesian(coe_debug, muSun_km, 'useTA', true);
+
 %% Conway max-theoretical STM benchmark (always runs)
 bench_conway_single = conway_max_theoretical_deflection_stm(xA_0, rE_tf, dV1_kmps, tf_sec, t0_sec, kep, muSun_km, odeOpt);
 
 fprintf('\nConway max theoretical deflection (single interceptor) = %.6f km\n', ...
     bench_conway_single.dr_max_km);
+print_conway_diagnostics(asteroid_name, X0_debug, xA_0, bench_conway_single, t0);
 
 % --- Discretization (ZOH control for SCP) ---
 T = tf_sec - t0_sec;                 % total time span from t0 to tf (s)
@@ -641,4 +648,27 @@ bench.dr_max_km       = norm(dr_STM);
 bench.rA_tf_lin_km    = xA_0(1:3) + dr_STM;
 bench.miss_vec_lin_km = bench.rA_tf_lin_km - rE_tf(:);
 bench.miss_lin_km     = norm(bench.miss_vec_lin_km);
+end
+
+function print_conway_diagnostics(ast_name, X0, xA_0, bench, t0_months)
+% print_conway_diagnostics  Print the key states and STM block used in the Conway benchmark.
+
+fprintf('\n=== Conway benchmark diagnostics ===\n');
+fprintf('Asteroid: %s\n', string(ast_name));
+
+fprintf('Asteroid initial Cartesian state X0 [km, km/s]:\n');
+fprintf('%.15g ', X0(:));
+fprintf('\n');
+
+fprintf('\nAsteroid state at t0 = -%g months [km, km/s]:\n', t0_months);
+fprintf('%.15g ', xA_0(:));
+fprintf('\n');
+
+fprintf('\nPhi_rv [km / (km/s)]:\n');
+for i = 1:size(bench.Phi_rv, 1)
+    fprintf('%.15g ', bench.Phi_rv(i, :));
+    fprintf('\n');
+end
+
+fprintf('\nConway max theoretical deflection: %.12f km\n', bench.dr_max_km);
 end

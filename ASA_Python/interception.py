@@ -133,7 +133,7 @@ def propagate_earth(env: Environment) -> tuple[FloatArray, FloatArray]:
         ],
         dtype=float,
     )
-    x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=False)
+    x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=True)
     t_earth, x_earth = propagate_two_body(
         x0,
         env.tspan,

@@ -54,7 +54,7 @@ class VirtualThrustConfig:
 
     reltol: float = 1e-12          # ODE relative tolerance for propagation and nonlinear checks
     abstol: float = 1e-12          # ODE absolute tolerance for propagation and nonlinear checks
-    run_scp: bool = False           #  Whether to run the SCP optimization or just do the nominal propagation and plotting
+    run_scp: bool = True           #  Whether to run the SCP optimization or just do the nominal propagation and plotting
     use_opt_dv_dir: bool = True    # Whether to use the optimal deflection direction from the linearized problem for the nominal propagation (vs. pure anti-velocity)
 
     asteroid_name: str = "Apophis"  # Name of the asteroid to target, must be in the asteroid catalog
@@ -190,6 +190,113 @@ def _make_hover_data(states: np.ndarray, t_hist_s: np.ndarray) -> np.ndarray:
     return np.column_stack((t_hist_s / 86400.0, radius_km, states[:, 2]))
 
 
+def _format_array_block(values: np.ndarray) -> str:
+    """Format one vector or matrix for compact terminal printing."""
+
+    return np.array2string(
+        np.asarray(values, dtype=float),
+        precision=12,
+        suppress_small=False,
+        separator=", ",
+        max_line_width=200,
+    )
+
+
+def _print_conway_diagnostics(result: VirtualThrustRunResult) -> None:
+    """Print the benchmark inputs and STM block used in the final Conway value."""
+
+    asteroid_coe = result.asteroid.coe.copy()
+    asteroid_coe[0] *= bodies.AU_KM
+    asteroid_x0 = keplerian.coe_to_cartesian(
+        asteroid_coe,
+        result.sun.mu.km,
+        use_true_anomaly=True,
+    )
+    xA_t0 = _select_mbi_state(result.mbi_states, result.config.t0_months).stateAst
+
+    print("\n=== Conway benchmark diagnostics ===")
+    print("Asteroid initial Cartesian state X0 [km, km/s]:")
+    print(_format_array_block(asteroid_x0))
+    print(f"\nAsteroid state at t0 = -{result.config.t0_months:g} months [km, km/s]:")
+    print(_format_array_block(xA_t0))
+    print("\nPhi_rv [km / (km/s)]:")
+    print(_format_array_block(result.benchmark.Phi_rv))
+    print(f"\nConway max theoretical deflection: {result.benchmark.dr_max_km:.12f} km")
+
+
+def _initial_direction_arrow(states: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """Pick a short visible arrow segment near the start of a 2D trajectory."""
+
+    xy = np.asarray(states, dtype=float)[:, :2]
+    if xy.shape[0] < 2:
+        return None
+
+    start = xy[0]
+    span = max(np.ptp(xy[:, 0]), np.ptp(xy[:, 1]), 1.0)
+    target_distance = 0.04 * span
+    for point in xy[1:]:
+        if np.linalg.norm(point - start) >= target_distance:
+            return start, point
+    return start, xy[-1]
+
+
+def _add_arrow(
+    fig: go.Figure,
+    tail_xy: np.ndarray,
+    head_xy: np.ndarray,
+    color: str,
+    *,
+    width: float = 2.0,
+) -> None:
+    """Draw one data-space arrow on a 2D Plotly figure."""
+
+    fig.add_annotation(
+        x=float(head_xy[0]),
+        y=float(head_xy[1]),
+        ax=float(tail_xy[0]),
+        ay=float(tail_xy[1]),
+        xref="x",
+        yref="y",
+        axref="x",
+        ayref="y",
+        text="",
+        showarrow=True,
+        arrowhead=3,
+        arrowsize=1.2,
+        arrowwidth=width,
+        arrowcolor=color,
+    )
+
+
+def _add_control_arrows(
+    fig: go.Figure,
+    states: np.ndarray,
+    controls: np.ndarray,
+    color: str,
+) -> None:
+    """Draw a small set of visible xy control-direction arrows along the path."""
+
+    xy = np.asarray(states, dtype=float)[:, :2]
+    uxy = np.asarray(controls, dtype=float)[:, :2]
+    n_segments = min(xy.shape[0] - 1, uxy.shape[0])
+    if n_segments <= 0:
+        return
+
+    span = max(np.ptp(xy[:, 0]), np.ptp(xy[:, 1]), 1.0)
+    arrow_length = 0.025 * span
+    arrow_count = min(18, n_segments)
+    sample_idx = np.unique(np.linspace(0, n_segments - 1, arrow_count, dtype=int))
+
+    for idx in sample_idx:
+        direction_xy = uxy[idx]
+        norm_xy = np.linalg.norm(direction_xy)
+        if norm_xy < 1e-12:
+            continue
+        tail_xy = xy[idx]
+        head_xy = tail_xy + arrow_length * direction_xy / norm_xy
+        _add_arrow(fig, tail_xy, head_xy, color, width=1.7)
+
+
 def _add_body_trace(
     fig: go.Figure,
     name: str,
@@ -238,6 +345,10 @@ def _add_body_trace(
             hovertemplate=f"{name} end<extra></extra>",
         )
     )
+
+    arrow_segment = _initial_direction_arrow(states)
+    if arrow_segment is not None:
+        _add_arrow(fig, arrow_segment[0], arrow_segment[1], color)
 
 
 def _add_state_marker(
@@ -482,10 +593,11 @@ def build_control_history_figure(
 def build_optimized_trajectory_figure(
     bodies: list[dict[str, object]],
     X_opt: np.ndarray,
+    U_opt: np.ndarray,
     t_grid_s: np.ndarray,
     title: str,
 ) -> go.Figure:
-    """Overlay the optimized asteroid trajectory on the 2D orbit plot."""
+    """Overlay the optimized asteroid trajectory and visible control arrows."""
 
     fig = go.Figure()
     colors = ["#1f77b4", "#d95f02", "#2ca02c", "#9467bd"]
@@ -499,6 +611,7 @@ def build_optimized_trajectory_figure(
         )
 
     _add_body_trace(fig, "Optimized asteroid", X_opt, t_grid_s, "#2ca02c")
+    _add_control_arrows(fig, X_opt, U_opt, "#1b7f3a")
     fig.add_trace(
         go.Scatter(
             x=X_opt[:-1, 0],
@@ -518,6 +631,16 @@ def build_optimized_trajectory_figure(
                 "y = %{y:.3e} km<br>"
                 "xy projection<extra></extra>"
             ),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[None],
+            y=[None],
+            mode="lines",
+            name="Control direction",
+            line={"color": "#1b7f3a", "width": 2},
+            hoverinfo="skip",
         )
     )
     fig.update_layout(
@@ -1129,6 +1252,7 @@ def run_virtual_thrust(config: VirtualThrustConfig | None = None) -> VirtualThru
             figures["optimized_trajectory"] = build_optimized_trajectory_figure(
                 plot_bodies,
                 scp_result.X_opt,
+                scp_result.U_opt,
                 t_grid_s,
                 "Earth + Nominal Asteroid + Optimized Asteroid",
             )
@@ -1195,6 +1319,7 @@ def main() -> None:
     print(f"Proxy acceleration bound: {result.amax_mps2:.6e} m/s^2")
     print(f"Warm-start thrust-time budget: {result.tau_budget_s:.6f} s")
     print(f"Conway max theoretical deflection: {result.benchmark.dr_max_km:.6f} km")
+    _print_conway_diagnostics(result)
     if result.scp is not None:
         print(f"SCP solver: {result.scp.solver}")
         if result.scp.miss_opt_km is not None:
