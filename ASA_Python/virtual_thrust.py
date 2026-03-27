@@ -261,8 +261,8 @@ def _add_control_arrows(
         return
 
     span = max(np.ptp(xy[:, 0]), np.ptp(xy[:, 1]), 1.0)
-    arrow_length = 0.025 * span
-    arrow_count = min(18, n_segments)
+    arrow_length = 0.035 * span
+    arrow_count = min(40, n_segments)              
     sample_idx = np.unique(np.linspace(0, n_segments - 1, arrow_count, dtype=int))
 
     for idx in sample_idx:
@@ -1264,7 +1264,7 @@ def main() -> None:
     print(f"Total delta-V bound: {result.dvmax_mps:.6f} m/s")
     print(f"Proxy acceleration bound: {result.amax_mps2:.6e} m/s^2")
     print(f"Warm-start thrust-time budget: {result.tau_budget_s:.6f} s")
-    print(f"Conway max theoretical deflection: {result.benchmark.dr_max_km:.6f} km")
+    print(f"Conway max theoretical deflection from one impactor at assumed DeltaV: {result.benchmark.dr_max_km:.6f} km")
     if result.t_grid_s.size >= 2:
         dt_seg_hours = (result.t_grid_s[1] - result.t_grid_s[0]) / 3600.0
         print(f"Interval duration: {dt_seg_hours:.6f} hours")

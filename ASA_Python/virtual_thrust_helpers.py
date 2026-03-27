@@ -156,10 +156,10 @@ def conway_max_theoretical_deflection_stm(
 ) -> ConwayBenchmark:
     """Conway-style fixed-impulse deflection benchmark based on the 2BP STM."""
 
-    x0 = np.asarray(xA_0, dtype=float).reshape(6)
-    rE = np.asarray(rE_tf, dtype=float).reshape(3)
-    duration = float(tf_sec - t0_sec)
-    phi_tf, _ = propagate_stm_2bp(
+    x0 = np.asarray(xA_0, dtype=float).reshape(6)                           # Initial state of asteroid at t0_sec                               
+    rE = np.asarray(rE_tf, dtype=float).reshape(3)                          # Position of Earth at tf_sec      
+    duration = float(tf_sec - t0_sec)                                       # Time of flight in seconds         
+    phi_tf, _ = propagate_stm_2bp(                                          # STM from t0_sec to tf_sec under 2BP dynamics, evaluated at tf_sec
         x0,
         mu_sun_km,
         (0.0, duration),
@@ -167,22 +167,22 @@ def conway_max_theoretical_deflection_stm(
         atol=atol,
         method=method,
     )
-    phi_rr = phi_tf[:3, :3]
-    phi_rv = phi_tf[:3, 3:]
-    phi_vr = phi_tf[3:, :3]
-    phi_vv = phi_tf[3:, 3:]
+    phi_rr = phi_tf[:3, :3]                             
+    phi_rv = phi_tf[:3, 3:]                             
+    phi_vr = phi_tf[3:, :3]                             
+    phi_vv = phi_tf[3:, 3:]                             
 
-    M = phi_rv.T @ phi_rv
-    lambda_values, eigenvectors = np.linalg.eigh(M)
-    idx = int(np.argmax(lambda_values))
-    lambda_max = float(lambda_values[idx])
-    e_opt = eigenvectors[:, idx]
-    e_opt = e_opt / np.linalg.norm(e_opt)
+    M = phi_rv.T @ phi_rv                               #+ phi_vv.T @ phi_vv            
+    lambda_values, eigenvectors = np.linalg.eigh(M)     # Compute eigenvalues and eigenvectors of M
+    idx = int(np.argmax(lambda_values))                 # Find index of largest eigenvalue
+    lambda_max = float(lambda_values[idx])              # Largest eigenvalue of M, which determines the maximum deflection growth
+    e_opt = eigenvectors[:, idx]                        # Optimal direction of velocity change in the asteroid's velocity space at t0_sec
+    e_opt = e_opt / np.linalg.norm(e_opt)               # Normalize the optimal direction vector to have unit length
 
-    dV_opt_kmps = float(dVmax_kmps) * e_opt
-    dr_opt_km = phi_rv @ dV_opt_kmps
-    rA_tf_lin_km = x0[:3] + dr_opt_km
-    miss_vec_lin_km = rA_tf_lin_km - rE
+    dV_opt_kmps = float(dVmax_kmps) * e_opt              # Optimal velocity change vector in km/s, scaled by the maximum allowed delta-V magnitude
+    dr_opt_km = phi_rv @ dV_opt_kmps                     # Resulting change in position at tf_sec due to the optimal velocity change, computed using the STM's phi_rv submatrix
+    rA_tf_lin_km = x0[:3] + dr_opt_km                    # Linearized final position of the asteroid at tf_sec after applying the optimal velocity change, starting from the initial position x0[:3] and adding the linearized change dr_opt_km  
+    miss_vec_lin_km = rA_tf_lin_km - rE                  # Linearized miss vector at tf_sec, computed as the difference between the linearized final position of the asteroid and the position of Earth at tf_sec    
 
     return ConwayBenchmark(
         Phi_tf=phi_tf,
