@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asa"
+version = "0.1.0"
+description = "Applied Space Systems Python utilities."
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["ASA", "ASA.*"]

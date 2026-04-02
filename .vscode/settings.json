@@ -1,0 +1,12 @@
+{
+    "python.defaultInterpreterPath": "/Users/mbecker/miniconda3/envs/virtual_thrust/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "code-runner.executorMap": {
+        "python": "/Users/mbecker/miniconda3/envs/virtual_thrust/bin/python"
+    },
+    "python.analysis.extraPaths": [
+        "."
+    ]
+}

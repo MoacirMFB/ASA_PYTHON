@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File (virtual_thrust)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "python": "/Users/mbecker/miniconda3/envs/virtual_thrust/bin/python",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true
+        }
+    ]
+}
