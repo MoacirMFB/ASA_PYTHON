@@ -1,4 +1,4 @@
-"""Core ASA_PYTHON package."""
+"""Core ASA package."""
 
 from .bodies import CelestialBody, OrbitElements, get_celestial_body
 from .control import linear_discrete_time_matrices

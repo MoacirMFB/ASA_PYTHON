@@ -9,4 +9,4 @@ description = "Applied Space Systems Python utilities."
 requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
-include = ["ASA_PYTHON", "ASA_PYTHON.*"]
+include = ["ASA", "ASA.*"]
