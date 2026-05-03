@@ -1,7 +1,17 @@
 """Core ASA package."""
 
 from .bodies import CelestialBody, OrbitElements, get_celestial_body
-from .control import linear_discrete_time_matrices
+from .control import (
+    MinFuelSolution,
+    linear_discrete_time_matrices,
+    min_fuel_combined_dynamics,
+    min_fuel_costate_dynamics,
+    min_fuel_hamiltonian,
+    min_fuel_optimal_control,
+    min_fuel_shooting_residual,
+    min_fuel_state_dynamics,
+    solve_min_fuel_bvp,
+)
 from .interception import (
     AsteroidRecord,
     ClosestApproach,
@@ -29,6 +39,7 @@ __all__ = [
     "ClosestApproach",
     "Environment",
     "MBIState",
+    "MinFuelSolution",
     "OrbitElements",
     "coe_to_cartesian",
     "dynamics_2bp_cartesian",
@@ -40,9 +51,16 @@ __all__ = [
     "linear_discrete_time_matrices",
     "make_bodies_for_plot",
     "make_env",
+    "min_fuel_combined_dynamics",
+    "min_fuel_costate_dynamics",
+    "min_fuel_hamiltonian",
+    "min_fuel_optimal_control",
+    "min_fuel_shooting_residual",
+    "min_fuel_state_dynamics",
     "prepare_mbi",
     "propagate_asteroid",
     "propagate_earth",
     "propagate_stm_2bp",
     "propagate_two_body",
+    "solve_min_fuel_bvp",
 ]
