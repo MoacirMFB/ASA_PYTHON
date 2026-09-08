@@ -19,18 +19,18 @@ FloatArray = NDArray[np.float64]
 class Environment:
     """Propagation settings and shared constants for the workflow."""
 
-    muSun_km: float
-    muSun_AU: float
-    AU2km: float
-    R_E_km: float
+    mu_sun_km: float
+    mu_sun_au: float
+    au2km: float
+    r_earth_km: float
     years: float
     step_min: float
     tspan: FloatArray
     rtol: float = 1e-13
     atol: float = 1e-13
     method: str = "DOP853"
-    t_Earth: FloatArray | None = None
-    X_Earth_hist: FloatArray | None = None
+    t_earth: FloatArray | None = None
+    x_earth_hist: FloatArray | None = None
 
 
 @dataclass
@@ -40,9 +40,9 @@ class AsteroidRecord:
     name: str
     coe: FloatArray
     t_hist: FloatArray | None = None
-    X_hist: FloatArray | None = None
-    MOID_pre_km: float | None = None
-    CA_pre_km: float | None = None
+    x_hist: FloatArray | None = None
+    moid_pre_km: float | None = None
+    ca_pre_km: float | None = None
 
 
 @dataclass
@@ -50,12 +50,12 @@ class ClosestApproach:
     """Closest-approach or MOID record."""
 
     d_km: float
-    idxEarth: int
-    idxAst: int
-    timeEarth: float
-    timeAst: float
-    stateEarth: FloatArray
-    stateAst: FloatArray
+    idx_earth: int
+    idx_ast: int
+    time_earth: float
+    time_ast: float
+    state_earth: FloatArray
+    state_ast: FloatArray
 
 
 @dataclass
@@ -63,8 +63,8 @@ class MBIState:
     """Earth and asteroid states a given number of months before impact."""
 
     month: float
-    stateEarth: FloatArray
-    stateAst: FloatArray
+    state_earth: FloatArray
+    state_ast: FloatArray
 
 
 _ASTEROID_CATALOG = {
@@ -104,10 +104,10 @@ def make_env(
     if tspan[-1] > tf_s:
         tspan[-1] = tf_s
     return Environment(
-        muSun_km=sun.mu.km,
-        muSun_AU=sun.mu.AU,
-        AU2km=AU_KM,
-        R_E_km=earth.radius.km,
+        mu_sun_km=sun.mu.km,
+        mu_sun_au=sun.mu.au,
+        au2km=AU_KM,
+        r_earth_km=earth.radius.km,
         years=years,
         step_min=step_min,
         tspan=tspan,
@@ -127,23 +127,23 @@ def propagate_earth(env: Environment) -> tuple[FloatArray, FloatArray]:
             orbit.a_km,
             orbit.e,
             np.deg2rad(orbit.i_deg),
-            np.deg2rad(orbit.RAAN_deg),
+            np.deg2rad(orbit.raan_deg),
             np.deg2rad(orbit.arg_peri_deg),
-            np.deg2rad(orbit.M0_deg),
+            np.deg2rad(orbit.m0_deg),
         ],
         dtype=float,
     )
-    x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=False)
+    x0 = coe_to_cartesian(x_coe, env.mu_sun_km, use_true_anomaly=False)
     t_earth, x_earth = propagate_two_body(
         x0,
         env.tspan,
-        env.muSun_km,
+        env.mu_sun_km,
         rtol=env.rtol,
         atol=env.atol,
         method=env.method,
     )
-    env.t_Earth = t_earth
-    env.X_Earth_hist = x_earth
+    env.t_earth = t_earth
+    env.x_earth_hist = x_earth
     return t_earth, x_earth
 
 
@@ -166,32 +166,32 @@ def propagate_asteroid(
 
     coe = asteroid.coe.copy()
     x_coe = coe.copy()
-    x_coe[0] *= env.AU2km
-    x0 = coe_to_cartesian(x_coe, env.muSun_km, use_true_anomaly=True)
+    x_coe[0] *= env.au2km
+    x0 = coe_to_cartesian(x_coe, env.mu_sun_km, use_true_anomaly=True)
     t_hist, x_hist = propagate_two_body(
         x0,
         env.tspan,
-        env.muSun_km,
+        env.mu_sun_km,
         rtol=env.rtol,
         atol=env.atol,
         method=env.method,
     )
     asteroid.t_hist = t_hist
-    asteroid.X_hist = x_hist
+    asteroid.x_hist = x_hist
     return asteroid
 
 
 def make_bodies_for_plot(asteroid: AsteroidRecord, env: Environment) -> list[dict[str, object]]:
     """Package Earth and one asteroid trajectory for deferred plotting work."""
 
-    if env.t_Earth is None or env.X_Earth_hist is None:
+    if env.t_earth is None or env.x_earth_hist is None:
         raise ValueError("Earth trajectory has not been propagated.")
     bodies: list[dict[str, object]] = [
-        {"name": "Earth", "X_hist": env.X_Earth_hist, "t_hist": env.t_Earth}
+        {"name": "Earth", "x_hist": env.x_earth_hist, "t_hist": env.t_earth}
     ]
-    if asteroid.t_hist is None or asteroid.X_hist is None:
+    if asteroid.t_hist is None or asteroid.x_hist is None:
         raise ValueError(f'Asteroid "{asteroid.name}" has not been propagated.')
-    bodies.append({"name": asteroid.name, "X_hist": asteroid.X_hist, "t_hist": asteroid.t_hist})
+    bodies.append({"name": asteroid.name, "x_hist": asteroid.x_hist, "t_hist": asteroid.t_hist})
     return bodies
 
 
@@ -215,12 +215,12 @@ def get_ca_moid(
     k_ca = int(np.argmin(sync_distances))
     ca = ClosestApproach(
         d_km=float(sync_distances[k_ca]),
-        idxEarth=k_ca,
-        idxAst=k_ca,
-        timeEarth=float(t_earth[k_ca]),
-        timeAst=float(t_asteroid[k_ca]),
-        stateEarth=earth[k_ca].copy(),
-        stateAst=asteroid[k_ca].copy(),
+        idx_earth=k_ca,
+        idx_ast=k_ca,
+        time_earth=float(t_earth[k_ca]),
+        time_ast=float(t_asteroid[k_ca]),
+        state_earth=earth[k_ca].copy(),
+        state_ast=asteroid[k_ca].copy(),
     )
 
     tree = cKDTree(asteroid[:, :3])
@@ -229,12 +229,12 @@ def get_ca_moid(
     idx_ast_moid = int(idx_ast[idx_earth])
     moid = ClosestApproach(
         d_km=float(distances[idx_earth]),
-        idxEarth=idx_earth,
-        idxAst=idx_ast_moid,
-        timeEarth=float(t_earth[idx_earth]),
-        timeAst=float(t_asteroid[idx_ast_moid]),
-        stateEarth=earth[idx_earth].copy(),
-        stateAst=asteroid[idx_ast_moid].copy(),
+        idx_earth=idx_earth,
+        idx_ast=idx_ast_moid,
+        time_earth=float(t_earth[idx_earth]),
+        time_ast=float(t_asteroid[idx_ast_moid]),
+        state_earth=earth[idx_earth].copy(),
+        state_ast=asteroid[idx_ast_moid].copy(),
     )
     return ca, moid
 
@@ -259,14 +259,14 @@ def get_states_at_mbi(
             mbi_states.append(
                 MBIState(
                     month=float(month),
-                    stateEarth=states_at_moid.stateEarth.copy(),
-                    stateAst=states_at_moid.stateAst.copy(),
+                    state_earth=states_at_moid.state_earth.copy(),
+                    state_ast=states_at_moid.state_ast.copy(),
                 )
             )
             continue
 
         _, earth_hist = propagate_two_body(
-            states_at_moid.stateEarth,
+            states_at_moid.state_earth,
             np.array([0.0, -dt], dtype=float),
             mu,
             rtol=rtol,
@@ -274,7 +274,7 @@ def get_states_at_mbi(
             method=method,
         )
         _, asteroid_hist = propagate_two_body(
-            states_at_moid.stateAst,
+            states_at_moid.state_ast,
             np.array([0.0, -dt], dtype=float),
             mu,
             rtol=rtol,
@@ -284,8 +284,8 @@ def get_states_at_mbi(
         mbi_states.append(
             MBIState(
                 month=float(month),
-                stateEarth=earth_hist[-1].copy(),
-                stateAst=asteroid_hist[-1].copy(),
+                state_earth=earth_hist[-1].copy(),
+                state_ast=asteroid_hist[-1].copy(),
             )
         )
     return mbi_states
@@ -303,31 +303,31 @@ def prepare_mbi(
 ) -> tuple[AsteroidRecord, list[MBIState], ClosestApproach]:
     """Prepare the single-asteroid state set at months-before-impact epochs."""
 
-    if env.t_Earth is None or env.X_Earth_hist is None:
+    if env.t_earth is None or env.x_earth_hist is None:
         raise ValueError("Earth trajectory must be available before calling prepare_mbi.")
 
-    if asteroid.t_hist is None or asteroid.X_hist is None:
+    if asteroid.t_hist is None or asteroid.x_hist is None:
         raise ValueError(f'Asteroid "{asteroid.name}" must be propagated before calling prepare_mbi.')
 
-    _, moid = get_ca_moid(env.X_Earth_hist, asteroid.X_hist, env.t_Earth, asteroid.t_hist)
-    asteroid.MOID_pre_km = moid.d_km
-    asteroid.CA_pre_km = moid.d_km
+    _, moid = get_ca_moid(env.x_earth_hist, asteroid.x_hist, env.t_earth, asteroid.t_hist)
+    asteroid.moid_pre_km = moid.d_km
+    asteroid.ca_pre_km = moid.d_km
 
     if force_impact:
-        forced_state_ast = moid.stateAst.copy()
-        forced_state_ast[:3] = moid.stateEarth[:3]
-        asteroid.MOID_pre_km = 0.0
-        asteroid.CA_pre_km = 0.0
+        forced_state_ast = moid.state_ast.copy()
+        forced_state_ast[:3] = moid.state_earth[:3]
+        asteroid.moid_pre_km = 0.0
+        asteroid.ca_pre_km = 0.0
         if not asteroid.name.endswith("-forced"):
             asteroid.name = f"{asteroid.name}-forced"
         state_at_moid = ClosestApproach(
             d_km=0.0,
-            idxEarth=moid.idxEarth,
-            idxAst=moid.idxAst,
-            timeEarth=moid.timeEarth,
-            timeAst=moid.timeAst,
-            stateEarth=moid.stateEarth.copy(),
-            stateAst=forced_state_ast,
+            idx_earth=moid.idx_earth,
+            idx_ast=moid.idx_ast,
+            time_earth=moid.time_earth,
+            time_ast=moid.time_ast,
+            state_earth=moid.state_earth.copy(),
+            state_ast=forced_state_ast,
         )
     else:
         state_at_moid = moid
@@ -335,7 +335,7 @@ def prepare_mbi(
     mbi_states = get_states_at_mbi(
         state_at_moid,
         months_back,
-        mu_sun_km=env.muSun_km,
+        mu_sun_km=env.mu_sun_km,
         rtol=rtol,
         atol=atol,
         method=method,

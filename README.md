@@ -3,7 +3,7 @@
 `asa_python` is a small Python package for astrodynamics and interception-analysis utilities. The current codebase provides:
 
 - celestial-body constants for the Sun, Earth, and Moon
-- two-body propagation and orbital-element conversion helpers
+- Keplerian geometry, anomaly, frame, maneuver, and propagation helpers
 - exact zero-order-hold discrete-time linearization utilities
 - a minimal Earth/asteroid interception workflow used by a related virtual-thrust toolchain
 
@@ -73,11 +73,23 @@ The package exports the following top-level symbols from `ASA`:
 
 ### Keplerian and propagation helpers
 
+- `keplerian` (the complete function library, importable with `from ASA import keplerian`)
+- `cartesian_to_keplerian`
 - `coe_to_cartesian`
+- `convert_equinoctial_to_eci`
+- `convert_milankovitch_to_eci`
+- `cr3bp`
 - `dynamics_2bp_cartesian`
+- `dynamics_2bp_cartesian_j2`
+- `dynamics_2bp_cartesian_j2_srp`
+- `dynamics_2bp_equinoctial_j2`
+- `dynamics_2bp_keplerian_j2`
+- `dynamics_2bp_milankovitch_j2`
 - `jacobian_2bp_cartesian`
+- `keplerian_to_equinoctial`
 - `propagate_stm_2bp`
 - `propagate_two_body`
+- `solve_keplers_equation`
 
 ### Control helper
 
@@ -124,7 +136,7 @@ env = make_env(
 t_earth, x_earth = propagate_earth(env)
 asteroid = propagate_asteroid(get_asteroid("Apophis"), env)
 
-ca, moid = get_ca_moid(x_earth, asteroid.X_hist, t_earth, asteroid.t_hist)
+ca, moid = get_ca_moid(x_earth, asteroid.x_hist, t_earth, asteroid.t_hist)
 print(f"Closest sampled synchronized approach: {ca.d_km:.3f} km")
 print(f"Sampled MOID proxy: {moid.d_km:.3f} km")
 

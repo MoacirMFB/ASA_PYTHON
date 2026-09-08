@@ -19,7 +19,7 @@ class GravitationalParameter:
         return self.km * 1e9
 
     @property
-    def AU(self) -> float:
+    def au(self) -> float:
         return self.km / (AU_KM**3)
 
 
@@ -34,7 +34,7 @@ class Length:
         return self.km * 1e3
 
     @property
-    def AU(self) -> float:
+    def au(self) -> float:
         return self.km / AU_KM
 
 
@@ -47,22 +47,22 @@ class OrbitElements:
     a_km: float
     e: float
     i_deg: float
-    RAAN_deg: float
-    M0_deg: float
+    raan_deg: float
+    m0_deg: float
     period_days: float
     speed_km_s: float
     arg_peri_deg: float = math.nan
 
     @property
-    def aphelion_AU(self) -> float:
+    def aphelion_au(self) -> float:
         return self.aphelion_km / AU_KM
 
     @property
-    def perihelion_AU(self) -> float:
+    def perihelion_au(self) -> float:
         return self.perihelion_km / AU_KM
 
     @property
-    def a_AU(self) -> float:
+    def a_au(self) -> float:
         return self.a_km / AU_KM
 
     @property
@@ -77,7 +77,7 @@ class _BodyData:
     name: str
     mu: GravitationalParameter
     radius: Length
-    J2: float
+    j2: float
     omega: float
     soi: Length
     orbit: OrbitElements
@@ -91,7 +91,7 @@ class CelestialBody:
         self.name = body.name
         self.mu = body.mu
         self.radius = body.radius
-        self.J2 = body.J2
+        self.j2 = body.j2
         self.omega = body.omega
         self.soi = body.soi
         self.orbit = body.orbit
@@ -109,7 +109,7 @@ def _get_body_data(body_name: str) -> _BodyData:
             name="Earth",
             mu=GravitationalParameter(398600.4418),
             radius=Length(6378.1363),
-            J2=1.08262668e-3,
+            j2=1.08262668e-3,
             omega=7.2921159e-5,
             soi=Length(145.0 * 6378.1363),
             orbit=OrbitElements(
@@ -118,8 +118,8 @@ def _get_body_data(body_name: str) -> _BodyData:
                 a_km=149598023.0,
                 e=0.0167086,
                 i_deg=0.00005,
-                RAAN_deg=-11.26064,
-                M0_deg=358.617,
+                raan_deg=-11.26064,
+                m0_deg=358.617,
                 period_days=365.256363004,
                 speed_km_s=29.7827,
                 arg_peri_deg=102.94719,
@@ -130,7 +130,7 @@ def _get_body_data(body_name: str) -> _BodyData:
             name="Moon",
             mu=GravitationalParameter(4902.800066),
             radius=Length(1737.4),
-            J2=2.03263e-4,
+            j2=2.03263e-4,
             omega=2.6617e-6,
             soi=Length(math.nan),
             orbit=OrbitElements(
@@ -139,8 +139,8 @@ def _get_body_data(body_name: str) -> _BodyData:
                 a_km=384400.0,
                 e=0.0549,
                 i_deg=5.145,
-                RAAN_deg=125.08,
-                M0_deg=115.3654,
+                raan_deg=125.08,
+                m0_deg=115.3654,
                 period_days=27.321661,
                 speed_km_s=1.022,
             ),
@@ -150,7 +150,7 @@ def _get_body_data(body_name: str) -> _BodyData:
             name="Sun",
             mu=GravitationalParameter(1.32712440041279419e11),
             radius=Length(696340.0),
-            J2=math.nan,
+            j2=math.nan,
             omega=2.86533e-6,
             soi=Length(math.nan),
             orbit=OrbitElements(
@@ -159,8 +159,8 @@ def _get_body_data(body_name: str) -> _BodyData:
                 a_km=math.nan,
                 e=math.nan,
                 i_deg=math.nan,
-                RAAN_deg=math.nan,
-                M0_deg=math.nan,
+                raan_deg=math.nan,
+                m0_deg=math.nan,
                 period_days=math.nan,
                 speed_km_s=math.nan,
             ),
