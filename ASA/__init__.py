@@ -1,6 +1,7 @@
 """Core ASA package."""
 
-from . import keplerian
+from . import attitude, keplerian
+from .attitude import *  # noqa: F401,F403
 from .bodies import CelestialBody, OrbitElements, get_celestial_body
 from .control import (
     MinFuelSolution,
@@ -60,6 +61,7 @@ from .keplerian import (
     solve_keplers_equation,
 )
 __all__ = [
+    "attitude",
     "atmospheric_density_exponential",
     "AsteroidRecord",
     "CelestialBody",
@@ -116,3 +118,4 @@ __all__ = [
     "solve_keplers_equation",
     "solve_min_fuel_bvp",
 ]
+__all__.extend(attitude.__all__)
