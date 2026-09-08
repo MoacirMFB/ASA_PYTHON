@@ -131,37 +131,16 @@ def omega_from_euler_rates_space_seq(euler_angles, theta_dot, seq):
     euler_angles = np.asarray(euler_angles, dtype=float).ravel()
     theta_dot = np.asarray(theta_dot, dtype=float).ravel()
     return omega_from_euler_rates_body_seq(euler_angles[::-1], theta_dot[::-1],
-                                           tuple(reversed(tuple(seq))))
-
-
-# theta_dot = f(w1, w2, w3, c1, s1, c2, s2)
-_EULER_RATES_SPACE = {
-    (1, 2, 3): lambda w1, w2, w3, c1, s1, c2, s2: (
-        w1 + ((w2 * s1 + w3 * c1) * s2) / c2, w2 * c1 - w3 * s1, (w2 * s1 + w3 * c1) / c2),
-    (2, 3, 1): lambda w1, w2, w3, c1, s1, c2, s2: (
-        ((w1 * c1 + w3 * s1) * s2) / c2 + w2, -w1 * s1 + w3 * c1, (w1 * c1 + w3 * s1) / c2),
-    (3, 1, 2): lambda w1, w2, w3, c1, s1, c2, s2: (
-        (w1 * s1 + w2 * c1) * s2 / c2 + w3, w1 * c1 - w2 * s1, (w1 * s1 + w2 * c1) / c2),
-    (1, 3, 2): lambda w1, w2, w3, c1, s1, c2, s2: (
-        w1 + ((-w2 * c1 + w3 * s1) * s2) / c2, w2 * s1 + w3 * c1, (w2 * c1 - w3 * s1) / c2),
-    (2, 1, 3): lambda w1, w2, w3, c1, s1, c2, s2: (
-        ((w1 * s1 - w3 * c1) * s2) / c2 + w2, w1 * c1 + w3 * s1, (-w1 * s1 + w3 * c1) / c2),
-    (3, 2, 1): lambda w1, w2, w3, c1, s1, c2, s2: (
-        ((-w1 * c1 + w2 * s1) * s2) / c2 + w3, w1 * s1 + w2 * c1, (w1 * c1 - w2 * s1) / c2),
-    (1, 2, 1): lambda w1, w2, w3, c1, s1, c2, s2: (
-        w1 - ((w2 * s1 + w3 * c1) * c2) / s2, w2 * c1 - w3 * s1, (w2 * s1 + w3 * c1) / s2),
-    (1, 3, 1): lambda w1, w2, w3, c1, s1, c2, s2: (
-        w1 + ((w2 * c1 - w3 * s1) * c2) / s2, w2 * s1 + w3 * c1, (-w2 * c1 + w3 * s1) / s2),
-}
+                                           tuple(seq)[::-1])
 
 
 def euler_rates_space_seq(omega, euler_angles, seq):
-    """Euler-angle rates from angular velocity for a space-fixed sequence."""
-    w1, w2, w3 = np.asarray(omega, dtype=float).ravel()
-    theta1, theta2, _ = np.asarray(euler_angles, dtype=float).ravel()
-    formula = _lookup(_EULER_RATES_SPACE, seq, "Space-fixed")
-    return np.array(formula(w1, w2, w3, np.cos(theta1), np.sin(theta1),
-                            np.cos(theta2), np.sin(theta2)))
+    """Euler rates from body angular velocity for all 12 space fixed sequences.
+
+    Reverse the body sequence mapping. Euler angle singularities still apply.
+    """
+    euler_angles = np.asarray(euler_angles, dtype=float).ravel()
+    return euler_rates_body_seq(omega, euler_angles[::-1], tuple(seq)[::-1])[::-1]
 
 
 # --- Quaternion rates -------------------------------------------------------

@@ -71,8 +71,8 @@ def test_space_angular_velocity_against_differentiated_rotation(sequence):
     assert_allclose(actual, expected, atol=2e-9)
 
 
-@pytest.mark.parametrize("sequence", SEQUENCES[:8])
-def test_implemented_space_euler_rates_against_differentiated_rotation(sequence):
+@pytest.mark.parametrize("sequence", SEQUENCES)
+def test_space_euler_rates_against_differentiated_rotation(sequence):
     expected = reference_omega(sequence, ANGLES, RATES, False)
     actual = k.euler_rates_space_seq(expected, ANGLES, tuple(map(int, sequence)))
     assert_allclose(actual, RATES, atol=2e-9)
@@ -92,7 +92,10 @@ def test_dcm_rate_against_differentiated_quaternion(convention):
 def test_quaternion_algebra_conversions_and_rates_against_rotations():
     rng = np.random.default_rng(507)
     quaternions = Rotation.random(100, random_state=rng).as_quat()
-    quaternions = np.vstack((quaternions, [0, 0, 0, 1], np.column_stack((np.eye(3), np.zeros(3)))))
+    axis = np.array([1., 2., 3.]) / np.sqrt(14)
+    half_turns = Rotation.from_rotvec(np.outer([np.pi - 1e-9, np.pi, np.pi + 1e-9], axis)).as_quat()
+    quaternions = np.vstack((quaternions, [0, 0, 0, 1],
+                            np.column_stack((np.eye(3), np.zeros(3))), half_turns))
     for quat in quaternions:
         rotation = Rotation.from_quat(quat).as_matrix()
         other = Rotation.random(random_state=rng).as_quat()
@@ -100,11 +103,9 @@ def test_quaternion_algebra_conversions_and_rates_against_rotations():
         for convention, expected in (("row", rotation), ("col", rotation.T)):
             assert_allclose(q.quat_to_dcm(quat, convention), expected, atol=1e-14)
             assert_allclose(q.quat_to_dcm_2(quat, convention), expected, atol=1e-14)
-            recovered = q.dcm_to_quat(expected, convention)
-            assert_allclose(abs(recovered @ quat), 1, atol=1e-14)
-            if abs(quat[3]) > 0.05:  # the shortcut explicitly excludes half turns
-                recovered = q.dcm_to_quat_2(expected, convention)
-                assert_allclose(abs(recovered @ quat), 1, atol=1e-12)
+            for converter in (q.dcm_to_quat, q.dcm_to_quat_2):
+                recovered = converter(expected, convention)
+                assert_allclose(abs(recovered @ quat), 1, atol=1e-14)
         product = q.quaternion_product(quat, other)
         assert_allclose(q.quaternion_cross_matrix(quat) @ other, product, atol=1e-14)
         assert_allclose(q.quat_to_dcm(product), rotation.T @ q.quat_to_dcm(other), atol=1e-14)

@@ -121,22 +121,8 @@ def dcm_to_quat(dcm, convention="col"):
 
 
 def dcm_to_quat_2(dcm, convention="col"):
-    """Quaternion from a DCM via the scalar-first shortcut; fails near q4 = 0."""
-    dcm = np.asarray(dcm, dtype=float)
-    q4 = 0.5 * np.sqrt(1.0 + dcm[0, 0] + dcm[1, 1] + dcm[2, 2])
-
-    if convention.lower() == "row":
-        q1 = (dcm[2, 1] - dcm[1, 2]) / (4 * q4)
-        q2 = (dcm[0, 2] - dcm[2, 0]) / (4 * q4)
-        q3 = (dcm[1, 0] - dcm[0, 1]) / (4 * q4)
-    elif convention.lower() == "col":
-        q1 = (dcm[1, 2] - dcm[2, 1]) / (4 * q4)
-        q2 = (dcm[2, 0] - dcm[0, 2]) / (4 * q4)
-        q3 = (dcm[0, 1] - dcm[1, 0]) / (4 * q4)
-    else:
-        raise ValueError('Invalid convention. Use "row" or "col".')
-
-    return np.array([q1, q2, q3, q4])
+    """Compatibility wrapper for :func:`dcm_to_quat`, with the same sign choice."""
+    return dcm_to_quat(dcm, convention)
 
 
 # --- Axis/angle -------------------------------------------------------------

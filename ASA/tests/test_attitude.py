@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from ..attitude import dcm as dcm_mod
-from ..attitude import kinematics as kin
 from ..attitude import (
     axis_angle_to_quaternion,
     center_of_light,
@@ -113,10 +112,10 @@ def test_euler_rates_invert_the_angular_velocity_map():
 
 def test_space_euler_rates_match_the_reversed_body_sequence():
     # A space-fixed sequence is the reversed body-fixed sequence with the
-    # angles and rates reversed, which pins down the space table independently.
+    # angles and rates reversed, so the two rate mappings must invert each other.
     angles = np.array([0.37, 0.53, 0.71])
     omega = np.array([0.11, -0.23, 0.41])
-    for seq in sorted(kin._EULER_RATES_SPACE):
+    for seq in ALL_SEQUENCES:
         rates = euler_rates_space_seq(omega, angles, seq)
         reversed_seq = tuple(reversed(seq))
         recovered = omega_from_euler_rates_body_seq(angles[::-1], rates[::-1], reversed_seq)
@@ -255,6 +254,7 @@ def test_bad_input_is_rejected_rather_than_silently_accepted():
                  lambda c: dcm_from_space_rotations((1, 2, 3), [0.3, 0.4, 0.5], convention=c),
                  lambda c: euler_axis_angle_to_dcm([0, 0, 1], 0.5, convention=c),
                  lambda c: quat_to_dcm([0, 0, 0, 1], convention=c),
+                 lambda c: dcm_to_quat_2(np.eye(3), convention=c),
                  lambda c: dcm_dot(np.eye(3), [0, 0, 1], convention=c)):
         with pytest.raises(ValueError):
             call("typo")
