@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from ..attitude import dcm as dcm_mod
 from ..attitude import kinematics as kin
@@ -14,7 +15,11 @@ from ..attitude import (
     dcm_to_euler_axis_angle,
     dcm_to_quat,
     dcm_to_quat_2,
+    dcm_dot,
     dual_trig_inverse,
+    omega_from_euler_rates_space_seq,
+    full_quat_from_vec,
+    dcm_to_euler_313,
     euler_axis_angle_to_dcm,
     euler_rates_body_seq,
     euler_rates_space_seq,
@@ -207,3 +212,56 @@ def test_misc_helpers():
     assert center_of_light(image) == (4.0, 3.0)  # 1-based, (column, row)
 
     assert dcm_mod.angle_between_vectors([1, 0, 0], [0, 1, 0]) == np.pi / 2
+
+
+def test_space_angular_velocity_covers_every_sequence():
+    # A space sequence is the reversed body sequence with reversed angles/rates.
+    angles = np.array([0.37, 0.53, 0.71])
+    rates = np.array([0.011, -0.023, 0.041])
+    for seq in ALL_SEQUENCES:
+        expected = omega_from_euler_rates_body_seq(angles[::-1], rates[::-1],
+                                                   tuple(reversed(seq)))
+        assert np.allclose(omega_from_euler_rates_space_seq(angles, rates, seq), expected), seq
+
+
+def test_dcm_rate_matches_a_numerical_derivative():
+    omega = np.array([0.2, -0.1, 0.4])
+    step = 1e-7
+    col = reference_dcm()
+    turn = euler_axis_angle_to_dcm(omega / np.linalg.norm(omega), np.linalg.norm(omega) * step)
+    assert np.allclose((turn @ col - col) / step, dcm_dot(col, omega, "col"), atol=1e-6)
+    assert np.allclose(dcm_dot(col.T, omega, "row"), col.T @ skew_symmetric(omega))
+
+
+def test_angle_extraction_stays_accurate_at_zero_and_half_turns():
+    axis = np.array([1.0, 2.0, 3.0]) / np.sqrt(14.0)
+    for theta in (0.0, 1e-9, 1e-4, 0.7, np.pi - 1e-4, np.pi - 1e-9, np.pi):
+        dcm = euler_axis_angle_to_dcm(axis, theta)
+        recovered_axis, recovered_theta = dcm_to_euler_axis_angle(dcm)
+        rebuilt = (np.eye(3) if recovered_axis is None
+                   else euler_axis_angle_to_dcm(recovered_axis, recovered_theta))
+        assert np.allclose(rebuilt, dcm, atol=1e-11), theta
+
+    # Near gimbal lock the extraction reports psi = 0, which reproduces the
+    # attitude only to order theta, so the tolerance follows the middle angle.
+    for angles in ((0.0, 0.0, 0.0), (0.3, 0.4, 0.5), (0.3, np.pi, 0.5), (1.1, 1e-10, 0.2)):
+        dcm = dcm_from_euler_angle_seq((3, 1, 3), angles, "col")
+        rebuilt = dcm_from_euler_angle_seq((3, 1, 3), dcm_to_euler_313(dcm), "col")
+        assert np.allclose(rebuilt, dcm, atol=max(1e-12, 10.0 * angles[1])), angles
+
+
+def test_bad_input_is_rejected_rather_than_silently_accepted():
+    for call in (lambda c: dcm_from_euler_angle_seq((1, 2, 3), [0.3, 0.4, 0.5], convention=c),
+                 lambda c: dcm_from_space_rotations((1, 2, 3), [0.3, 0.4, 0.5], convention=c),
+                 lambda c: euler_axis_angle_to_dcm([0, 0, 1], 0.5, convention=c),
+                 lambda c: quat_to_dcm([0, 0, 0, 1], convention=c),
+                 lambda c: dcm_dot(np.eye(3), [0, 0, 1], convention=c)):
+        with pytest.raises(ValueError):
+            call("typo")
+    with pytest.raises(ValueError):
+        full_quat_from_vec([0.9, 0.9, 0.9])  # would otherwise be a silent NaN
+
+
+def test_axis_angle_constructor_normalizes_its_axis():
+    quat, _, _ = axis_angle_to_quaternion(np.pi / 2, [2.0, 0.0, 0.0])
+    assert np.allclose(quat_to_dcm(quat), euler_axis_angle_to_dcm([2.0, 0.0, 0.0], np.pi / 2))

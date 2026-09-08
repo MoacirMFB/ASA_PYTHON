@@ -27,6 +27,15 @@ __all__ = [
 ]
 
 
+def _from_row_convention(dcm, convention):
+    """Return a row-convention matrix in the requested convention."""
+    if convention.lower() == "row":
+        return dcm
+    if convention.lower() == "col":
+        return dcm.T
+    raise ValueError('Invalid convention. Use "row" or "col".')
+
+
 def _apply_convention(dcm, convention):
     """Transpose when the requested convention differs from the computed one."""
     if convention.lower() == "row":
@@ -106,23 +115,33 @@ def dcm_to_euler_axis_angle(dcm):
     ``theta = pi`` case is handled through ``A + I`` since sin(theta) vanishes.
     """
     dcm = np.asarray(dcm, dtype=float)
-    cos_theta = np.clip((np.trace(dcm) - 1.0) / 2.0, -1.0, 1.0)
-    theta = float(np.arccos(cos_theta))
+    antisymmetric = np.array([dcm[1, 2] - dcm[2, 1],
+                              dcm[2, 0] - dcm[0, 2],
+                              dcm[0, 1] - dcm[1, 0]])
+    # |antisymmetric| = 2 sin(theta) and the trace gives 2 cos(theta) + 1, so
+    # atan2 recovers the angle without arccos's precision loss near 0 and pi.
+    sin_theta = float(np.linalg.norm(antisymmetric)) / 2.0
+    theta = float(np.arctan2(sin_theta, (np.trace(dcm) - 1.0) / 2.0))
 
-    if np.isclose(cos_theta, 1.0):
+    if theta < 1.0e-12:
         return None, theta  # identity rotation, axis undefined
-    if np.isclose(cos_theta, -1.0):
-        # theta = pi, so A = -I + 2 e e^T; normalize the strongest column of A + I.
-        a_plus_i = dcm + np.eye(3)
-        column = np.unravel_index(np.abs(a_plus_i).argmax(), a_plus_i.shape)[1]
-        axis = a_plus_i[:, column]
-        return axis / np.linalg.norm(axis), theta
 
-    axis = (1.0 / (2.0 * np.sin(theta))) * np.array([
-        dcm[1, 2] - dcm[2, 1],
-        dcm[2, 0] - dcm[0, 2],
-        dcm[0, 1] - dcm[1, 0],
-    ])
+    # Away from a half turn the antisymmetric part gives the axis directly.
+    if np.pi - theta > 1.0e-4:
+        return antisymmetric / (2.0 * sin_theta), theta
+
+    # Near theta = pi the antisymmetric part vanishes, so use the symmetric one:
+    # (C + C^T)/2 = cos(theta) I + (1 - cos(theta)) e e^T, and 1 - cos(theta) ~ 2
+    # stays well conditioned exactly where the other formula breaks down.
+    cos_theta = (np.trace(dcm) - 1.0) / 2.0
+    outer = ((dcm + dcm.T) / 2.0 - cos_theta * np.eye(3)) / (1.0 - cos_theta)
+    pivot = int(np.argmax(np.diag(outer)))
+    axis = outer[:, pivot] / np.sqrt(max(outer[pivot, pivot], 0.0))
+    axis = axis / np.linalg.norm(axis)
+    # The symmetric part is blind to the sign, so take it from the antisymmetric
+    # part while that still carries signal. At exactly pi either sign is correct.
+    if antisymmetric @ axis < 0.0:
+        axis = -axis
     return axis, theta
 
 
@@ -178,7 +197,7 @@ def dcm_from_euler_angle_seq(seq, angles, convention="row"):
     for axis, angle in zip(seq, angles):
         dcm = dcm @ _elementary_row(axis, np.cos(angle), np.sin(angle),
                                     lambda e: np.array(e, dtype=float))
-    return dcm if convention.lower() == "row" else _apply_convention(dcm, "row")
+    return _from_row_convention(dcm, convention)
 
 
 def dcm_from_euler_angle_seq_sym(seq, angles, convention="row"):
@@ -268,7 +287,7 @@ def dcm_from_space_rotations(seq, angles, convention="row"):
     if len(seq) != 3 or len(angles) != 3:
         raise ValueError("Both the rotation sequence and angles must be length 3.")
     dcm = np.array(_space_rotation_entries(seq, np.cos, np.sin, angles), dtype=float)
-    return dcm if convention.lower() == "row" else _apply_convention(dcm, "row")
+    return _from_row_convention(dcm, convention)
 
 
 def dcm_from_space_rotations_sym(seq, thetas):
@@ -282,19 +301,18 @@ def dcm_from_space_rotations_sym(seq, thetas):
 def dcm_to_euler_313(dcm):
     """3-1-3 Euler angles ``(phi, theta, psi)`` from a DCM, in radians."""
     dcm = np.asarray(dcm, dtype=float)
-    if abs(dcm[2, 0]) != 1.0:
-        theta = float(np.arccos(np.clip(dcm[2, 0], -1.0, 1.0)))
-        phi = float(np.arctan2(dcm[2, 1], dcm[2, 2]))
-        psi = float(np.arctan2(dcm[1, 0], dcm[0, 0]))
-        return phi, theta, psi
+    # sin(theta) >= 0 on [0, pi], so it is the norm of the third row's first two
+    # entries. Taking the angle from atan2 stays accurate at theta = 0 and pi,
+    # where arccos would lose half of the significant digits.
+    sin_theta = float(np.hypot(dcm[2, 0], dcm[2, 1]))
+    theta = float(np.arctan2(sin_theta, dcm[2, 2]))
 
-    psi = 0.0  # gimbal lock, psi is free
-    if dcm[2, 0] == -1.0:
-        theta = np.pi / 2.0
-        phi = psi + float(np.arctan2(dcm[0, 1], dcm[0, 2]))
-    else:
-        theta = -np.pi / 2.0
-        phi = -psi + float(np.arctan2(-dcm[0, 1], -dcm[0, 2]))
+    # At theta = 0 or pi only phi +/- psi is observable, so psi is set to zero.
+    if sin_theta < 1.0e-9:
+        return float(np.arctan2(dcm[0, 1], dcm[0, 0])), theta, 0.0
+
+    phi = float(np.arctan2(dcm[2, 0], -dcm[2, 1]))
+    psi = float(np.arctan2(dcm[0, 2], dcm[1, 2]))
     return phi, theta, psi
 
 

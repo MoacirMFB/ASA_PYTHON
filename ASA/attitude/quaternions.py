@@ -146,6 +146,7 @@ def axis_angle_to_quaternion(theta, axis):
     Returns ``(q, q_vec, q_scalar)``.
     """
     axis = np.asarray(axis, dtype=float).ravel()
+    axis = axis / np.linalg.norm(axis)  # a non-unit axis would rescale the angle
     q_vec = axis * np.sin(theta / 2.0)
     q_scalar = float(np.cos(theta / 2.0))
     return np.append(q_vec, q_scalar), q_vec, q_scalar
@@ -168,7 +169,10 @@ def quat_to_euler_axis_angle(q):
 def full_quat_from_vec(q_vec):
     """Full unit quaternion from its vector part, returned as ``(q, q4)``."""
     q_vec = np.asarray(q_vec, dtype=float).ravel()
-    q4 = float(np.sqrt(1.0 - np.dot(q_vec, q_vec)))
+    norm_squared = float(q_vec @ q_vec)
+    if norm_squared > 1.0 + 1.0e-12:
+        raise ValueError("The quaternion vector part cannot have a norm above one.")
+    q4 = float(np.sqrt(max(0.0, 1.0 - norm_squared)))
     return np.append(q_vec, q4), q4
 
 

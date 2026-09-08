@@ -36,11 +36,10 @@ def _lookup(table, seq, what):
 def dcm_dot(dcm, omega, convention="row"):
     """Poisson's kinematical equation, Cdot = C [omega x] in the row convention."""
     dcm = np.asarray(dcm, dtype=float)
-    c_dot = dcm @ skew_symmetric(omega)
     if convention.lower() == "row":
-        return c_dot
+        return dcm @ skew_symmetric(omega)
     if convention.lower() == "col":
-        return c_dot.T
+        return -skew_symmetric(omega) @ dcm
     raise ValueError('Invalid convention. Use "row" or "col".')
 
 
@@ -123,27 +122,16 @@ def omega_from_euler_rates_body_seq(euler_angles, theta_dot, seq):
 
 
 # --- Space-fixed sequences --------------------------------------------------
-# Only 1-2-3 and 2-3-1 have genuine space-fixed formulas in the MATLAB source;
-# every other sequence falls through to the body-fixed table, as it did there.
-_OMEGA_FROM_SPACE_RATES = {
-    (1, 2, 3): lambda t1, t2, t3, c1, s1, c2, s2: (
-        t1 - t3 * s2, t2 * c1 + t3 * s1 * c2, -t2 * s1 + t3 * c1 * c2),
-    (2, 3, 1): lambda t1, t2, t3, c1, s1, c2, s2: (
-        -t2 * s1 + t3 * c1 * c2, t1 - t3 * s2, t2 * c1 + t3 * s1 * c2),
-}
-
-
 def omega_from_euler_rates_space_seq(euler_angles, theta_dot, seq):
-    """Angular velocity from Euler rates for a space-fixed rotation sequence."""
-    theta1, theta2, theta3 = np.asarray(euler_angles, dtype=float).ravel()
-    t1, t2, t3 = np.asarray(theta_dot, dtype=float).ravel()
-    key = tuple(int(axis) for axis in seq)
+    """Angular velocity from Euler rates for a space-fixed rotation sequence.
 
-    if key in _OMEGA_FROM_SPACE_RATES:
-        formula = _OMEGA_FROM_SPACE_RATES[key]
-        return np.array(formula(t1, t2, t3, np.cos(theta1), np.sin(theta1),
-                                np.cos(theta2), np.sin(theta2)))
-    return omega_from_euler_rates_body_seq(euler_angles, theta_dot, seq)
+    A space-fixed sequence is the reversed body-fixed sequence with the angles
+    and rates reversed, so the body table serves both cases.
+    """
+    euler_angles = np.asarray(euler_angles, dtype=float).ravel()
+    theta_dot = np.asarray(theta_dot, dtype=float).ravel()
+    return omega_from_euler_rates_body_seq(euler_angles[::-1], theta_dot[::-1],
+                                           tuple(reversed(tuple(seq))))
 
 
 # theta_dot = f(w1, w2, w3, c1, s1, c2, s2)
