@@ -15,6 +15,36 @@ from .keplerian import coe_to_cartesian, propagate_two_body
 FloatArray = NDArray[np.float64]
 
 
+@dataclass(frozen=True)
+class EphemerisSource:
+    """Take body states from loaded SPICE kernels instead of integrating them.
+
+    ``epoch_et_s`` is the absolute ephemeris time corresponding to ``t = 0`` of
+    the environment's ``tspan``, which is otherwise a relative clock with no
+    epoch attached. Everything else names the bodies and frame to query.
+
+    Set this on an :class:`Environment` and Earth *and* the asteroid are both
+    sampled from the kernels. Mixing the two sources would be worse than using
+    neither: a close approach computed between an ephemeris asteroid and a
+    two-body Earth is dominated by the mismatch, not by the encounter.
+    """
+
+    epoch_et_s: float
+    earth_id: str = "399"
+    sun_id: str = "10"
+    frame: str = "ECLIPJ2000"
+
+    def sample(self, body_id: str, t_rel_s: Iterable[float] | FloatArray) -> FloatArray:
+        """Heliocentric states of one body at times relative to ``epoch_et_s``."""
+
+        from .ephemeris import state as _state  # keeps spiceypy an optional dependency
+
+        times_s = np.asarray(t_rel_s, dtype=float).reshape(-1)
+        return np.atleast_2d(
+            _state(body_id, self.epoch_et_s + times_s, observer=self.sun_id, frame=self.frame)
+        )
+
+
 @dataclass
 class Environment:
     """Propagation settings and shared constants for the workflow."""
@@ -31,6 +61,7 @@ class Environment:
     method: str = "DOP853"
     t_earth: FloatArray | None = None
     x_earth_hist: FloatArray | None = None
+    ephemeris: EphemerisSource | None = None
 
 
 @dataclass
@@ -39,6 +70,7 @@ class AsteroidRecord:
 
     name: str
     coe: FloatArray
+    spice_id: str | None = None
     t_hist: FloatArray | None = None
     x_hist: FloatArray | None = None
     moid_pre_km: float | None = None
@@ -120,6 +152,13 @@ def make_env(
 def propagate_earth(env: Environment) -> tuple[FloatArray, FloatArray]:
     """Propagate Earth's heliocentric two-body state history."""
 
+    if env.ephemeris is not None:
+        t_earth = np.asarray(env.tspan, dtype=float).reshape(-1)
+        x_earth = env.ephemeris.sample(env.ephemeris.earth_id, t_earth)
+        env.t_earth = t_earth
+        env.x_earth_hist = x_earth
+        return t_earth, x_earth
+
     earth = get_celestial_body("Earth")
     orbit = earth.orbit
     x_coe = np.array(
@@ -158,11 +197,64 @@ def get_asteroid(name: str) -> AsteroidRecord:
     )
 
 
+def get_asteroid_from_ephemeris(
+    name: str,
+    spice_id: str,
+    epoch_et_s: float,
+    *,
+    mu_sun_km: float | None = None,
+    frame: str = "ECLIPJ2000",
+    sun_id: str = "10",
+) -> AsteroidRecord:
+    """Build an asteroid record backed by a loaded SPICE kernel.
+
+    The record's ``coe`` is filled with the osculating elements at
+    ``epoch_et_s``, in the same layout the in-memory catalog uses (semi-major
+    axis in au, angles in radians, true anomaly last), so anything that reads
+    ``coe`` keeps working. Those elements are descriptive only: the history
+    comes from the kernel, not from propagating them.
+    """
+
+    from .ephemeris import osculating_elements  # keeps spiceypy an optional dependency
+
+    mu = get_celestial_body("Sun").mu.km if mu_sun_km is None else float(mu_sun_km)
+    elements = osculating_elements(
+        spice_id, float(epoch_et_s), mu, observer=sun_id, frame=frame
+    )
+    return AsteroidRecord(
+        name=name,
+        spice_id=str(spice_id),
+        coe=np.array(
+            [
+                elements["semi_major_axis_km"] / AU_KM,
+                elements["eccentricity"],
+                elements["inclination_rad"],
+                elements["raan_rad"],
+                elements["argument_of_periapsis_rad"],
+                elements["true_anomaly_rad"],
+            ],
+            dtype=float,
+        ),
+    )
+
+
 def propagate_asteroid(
     asteroid: AsteroidRecord,
     env: Environment,
 ) -> AsteroidRecord:
     """Propagate one asteroid heliocentric history from catalog COEs."""
+
+    if env.ephemeris is not None:
+        if asteroid.spice_id is None:
+            raise ValueError(
+                f'Asteroid "{asteroid.name}" has no spice_id, so it cannot be sampled from the '
+                "kernels this Environment is configured to use. Build it with "
+                "get_asteroid_from_ephemeris()."
+            )
+        t_hist = np.asarray(env.tspan, dtype=float).reshape(-1)
+        asteroid.t_hist = t_hist
+        asteroid.x_hist = env.ephemeris.sample(asteroid.spice_id, t_hist)
+        return asteroid
 
     coe = asteroid.coe.copy()
     x_coe = coe.copy()
@@ -247,14 +339,41 @@ def get_states_at_mbi(
     rtol: float = 1e-12,
     atol: float = 1e-12,
     method: str = "DOP853",
+    ephemeris: EphemerisSource | None = None,
+    asteroid_spice_id: str | None = None,
 ) -> list[MBIState]:
-    """Backward-propagate Earth and asteroid from the MOID epoch."""
+    """Backward-propagate Earth and asteroid from the MOID epoch.
+
+    With ``ephemeris`` supplied the earlier states are read from the kernels
+    instead of integrated backwards. That matters: back-propagating two-body
+    from a true encounter state reintroduces exactly the modelling error the
+    ephemeris was brought in to remove, and it does so over the whole warning
+    time, which is where deflection sensitivity is largest.
+    """
 
     mu = get_celestial_body("Sun").mu.km if mu_sun_km is None else float(mu_sun_km)
     months = np.asarray(months_back, dtype=float).reshape(-1)
+    if ephemeris is not None and asteroid_spice_id is None:
+        raise ValueError("asteroid_spice_id is required when sampling MBI states from an ephemeris.")
     mbi_states: list[MBIState] = []
     for month in months:
         dt = float(month * 30.0 * 86400.0)
+        if ephemeris is not None:
+            # Each body is sampled at its own reference epoch minus dt, which is
+            # what the two-body branch below does by propagating each from its
+            # own state. The two epochs differ when CA and MOID do not coincide.
+            mbi_states.append(
+                MBIState(
+                    month=float(month),
+                    state_earth=ephemeris.sample(
+                        ephemeris.earth_id, [states_at_moid.time_earth - dt]
+                    )[0],
+                    state_ast=ephemeris.sample(
+                        asteroid_spice_id, [states_at_moid.time_ast - dt]
+                    )[0],
+                )
+            )
+            continue
         if np.isclose(dt, 0.0):
             mbi_states.append(
                 MBIState(
@@ -313,6 +432,13 @@ def prepare_mbi(
     asteroid.moid_pre_km = moid.d_km
     asteroid.ca_pre_km = moid.d_km
 
+    if force_impact and env.ephemeris is not None:
+        raise ValueError(
+            "force_impact moves the asteroid onto Earth artificially and cannot be combined "
+            "with an ephemeris-backed Environment, whose trajectory is already the real one. "
+            "Use a scenario kernel whose object actually impacts."
+        )
+
     if force_impact:
         forced_state_ast = moid.state_ast.copy()
         forced_state_ast[:3] = moid.state_earth[:3]
@@ -336,6 +462,8 @@ def prepare_mbi(
         state_at_moid,
         months_back,
         mu_sun_km=env.mu_sun_km,
+        ephemeris=env.ephemeris,
+        asteroid_spice_id=asteroid.spice_id,
         rtol=rtol,
         atol=atol,
         method=method,

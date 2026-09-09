@@ -27,10 +27,12 @@ from .control import (
 )
 from .interception import (
     AsteroidRecord,
+    EphemerisSource,
     ClosestApproach,
     Environment,
     MBIState,
     get_asteroid,
+    get_asteroid_from_ephemeris,
     get_ca_moid,
     get_states_at_mbi,
     make_bodies_for_plot,
@@ -86,6 +88,7 @@ __all__ = [
     "ephemeris",
     "atmospheric_density_exponential",
     "AsteroidRecord",
+    "EphemerisSource",
     "CelestialBody",
     "ClosestApproach",
     "Environment",
@@ -114,6 +117,7 @@ __all__ = [
     "dynamics_2bp_spherical_j2",
     "dynamics_2bp_milankovitch_j2_srp",
     "get_asteroid",
+    "get_asteroid_from_ephemeris",
     "get_ca_moid",
     "get_celestial_body",
     "get_states_at_mbi",
