@@ -1,8 +1,18 @@
 """Core ASA package."""
 
-from . import attitude, keplerian
+from . import attitude, bplane, keplerian
 from .attitude import *  # noqa: F401,F403
 from .bodies import CelestialBody, OrbitElements, get_celestial_body
+from .bplane import (
+    BPlaneCoordinates,
+    HyperbolicEncounter,
+    bplane_coordinates,
+    bplane_frame,
+    capture_impact_parameter,
+    hyperbolic_encounter,
+    impact_parameter_from_periapsis,
+    periapsis_from_impact_parameter,
+)
 from .control import (
     MinFuelSolution,
     linear_discrete_time_matrices,
@@ -62,6 +72,15 @@ from .keplerian import (
 )
 __all__ = [
     "attitude",
+    "bplane",
+    "BPlaneCoordinates",
+    "HyperbolicEncounter",
+    "bplane_coordinates",
+    "bplane_frame",
+    "capture_impact_parameter",
+    "hyperbolic_encounter",
+    "impact_parameter_from_periapsis",
+    "periapsis_from_impact_parameter",
     "atmospheric_density_exponential",
     "AsteroidRecord",
     "CelestialBody",
