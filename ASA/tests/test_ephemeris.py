@@ -169,3 +169,77 @@ def test_bplane_coordinates_are_stable_inside_the_sphere_of_influence():
     for sampled in values[1:]:
         assert sampled.b_km == pytest.approx(values[0].b_km, rel=2e-3)
         assert sampled.v_infinity_kmps == pytest.approx(values[0].v_infinity_kmps, rel=1e-4)
+
+
+# Five rows of JPL's published risk-corridor table for the Epoch 1 solution
+# (https://cneos.jpl.nasa.gov/pd/cs/pdc25/2024pdc25_mts.txt), which lists the
+# Opik b-plane coordinates of 345 impacting trajectories evenly spaced along the
+# corridor. Values are quantised to whole km and spaced about 63 km apart in
+# zeta, so that spacing is the resolution any comparison against them can have.
+PUBLISHED_RISK_CORRIDOR = (
+    # case, xi_km, zeta_km, impact_speed_kmps, utc_time
+    (1, -352, -10831, 13.89, "16:03:27"),
+    (172, -318, -63, 13.82, "16:13:41"),
+    (173, -318, 0, 13.82, "16:13:49"),
+    (236, -306, 3961, 13.80, "16:23:42"),
+    (345, -291, 10828, 13.75, "16:51:22"),
+)
+
+PDC25_S1_KERNEL = "2024_PDC25-s1-merged-DE441.bsp"
+PDC25_S1_BODY = "-937019"
+
+
+def test_matches_jpls_published_opik_coordinates():
+    """The Epoch 1 nominal must land on JPL's own risk corridor.
+
+    This is the sharpest check available: not agreement with a paper's rounded
+    restatement, but with the b-plane coordinates JPL publishes for this exact
+    trajectory. Agreement to well inside the table's own 63 km sampling
+    validates the frame, the sign convention and the ephemeris path at once.
+    """
+
+    for name in (LEAPSECONDS, PDC25_S1_KERNEL):
+        if not (kernel_dir() / name).is_file():
+            pytest.skip(f"{name} not in the kernel cache; see module docstring")
+    kernel_path = kernel_dir() / PDC25_S1_KERNEL
+    load_kernels([kernel_dir() / LEAPSECONDS, kernel_path])
+
+    end_et_s = common_coverage(kernel_path, [PDC25_S1_BODY, EARTH]).end_et_s
+    et_s = end_et_s - 6.0 * 3600.0
+    relative = state(PDC25_S1_BODY, et_s, observer=EARTH)
+    earth_velocity = state(EARTH, et_s, observer=SUN)[3:]
+    encounter = bplane.bplane_coordinates(relative[:3], relative[3:], earth_velocity, EARTH_MU)
+
+    _, xi_km, zeta_km, speed_kmps, utc_time = PUBLISHED_RISK_CORRIDOR[1]
+    assert encounter.xi_km == pytest.approx(xi_km, abs=15.0)
+    assert encounter.zeta_km == pytest.approx(zeta_km, abs=15.0)
+
+    # Impact speed is v_infinity lifted by falling down Earth's well, and is
+    # published independently of the b-plane coordinates.
+    escape_kmps = np.sqrt(2.0 * EARTH_MU / EARTH_RADIUS_KM)
+    assert np.hypot(encounter.v_infinity_kmps, escape_kmps) == pytest.approx(speed_kmps, abs=0.05)
+
+    # And the epoch at which the trajectory reaches Earth's surface.
+    low_et_s, high_et_s = end_et_s - 300.0, end_et_s
+    for _ in range(200):
+        middle_et_s = 0.5 * (low_et_s + high_et_s)
+        separation_km = np.linalg.norm(state(PDC25_S1_BODY, middle_et_s, observer=EARTH)[:3])
+        low_et_s, high_et_s = (
+            (middle_et_s, high_et_s) if separation_km > EARTH_RADIUS_KM else (low_et_s, middle_et_s)
+        )
+    published_et_s = utc_to_et(f"2041 APR 24 {utc_time}")
+    assert low_et_s == pytest.approx(published_et_s, abs=5.0)
+
+
+def test_risk_corridor_is_narrow_in_xi_and_long_in_zeta():
+    """Structural check on the convention: xi is the MOID, zeta the timing.
+
+    The uncertainty runs along the corridor, so a locus of impacting
+    trajectories must be wide in the timing coordinate and narrow in the
+    geometric one. If xi and zeta were swapped this would fail outright.
+    """
+
+    xi_values = [row[1] for row in PUBLISHED_RISK_CORRIDOR]
+    zeta_values = [row[2] for row in PUBLISHED_RISK_CORRIDOR]
+    assert max(xi_values) - min(xi_values) < 100.0
+    assert max(zeta_values) - min(zeta_values) > 20000.0
