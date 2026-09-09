@@ -1,6 +1,6 @@
 """Core ASA package."""
 
-from . import attitude, bplane, keplerian
+from . import attitude, bplane, ephemeris, keplerian
 from .attitude import *  # noqa: F401,F403
 from .bodies import CelestialBody, OrbitElements, get_celestial_body
 from .bplane import (
@@ -12,6 +12,7 @@ from .bplane import (
     hyperbolic_encounter,
     impact_parameter_from_periapsis,
     periapsis_from_impact_parameter,
+    sphere_of_influence_radius,
 )
 from .control import (
     MinFuelSolution,
@@ -81,6 +82,8 @@ __all__ = [
     "hyperbolic_encounter",
     "impact_parameter_from_periapsis",
     "periapsis_from_impact_parameter",
+    "sphere_of_influence_radius",
+    "ephemeris",
     "atmospheric_density_exponential",
     "AsteroidRecord",
     "CelestialBody",

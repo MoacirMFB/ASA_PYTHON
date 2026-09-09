@@ -8,5 +8,9 @@ version = "0.1.0"
 description = "Applied Space Systems Python utilities."
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+# ASA.ephemeris only. Everything else in ASA works without it.
+ephemeris = ["spiceypy>=6"]
+
 [tool.setuptools.packages.find]
 include = ["ASA", "ASA.*"]
