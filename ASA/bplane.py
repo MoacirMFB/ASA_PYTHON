@@ -256,6 +256,58 @@ def bplane_coordinates(
     )
 
 
+def bplane_coordinates_unperturbed(
+    position_km: Iterable[float] | FloatArray,
+    velocity_kmps: Iterable[float] | FloatArray,
+    planet_velocity_kmps: Iterable[float] | FloatArray,
+    mu_km3_s2: float | None = None,
+) -> BPlaneCoordinates:
+    """``(xi, zeta)`` for a trajectory propagated *without* the planet's gravity.
+
+    Use this - not :func:`bplane_coordinates` - whenever the trajectory was
+    integrated with the planet left out of the dynamics, which is the usual case
+    for heliocentric deflection studies: the asteroid is propagated under the Sun
+    alone and the encounter is evaluated afterwards. Such a state travels in a
+    straight line relative to the planet, so there is no osculating hyperbola to
+    fit and :func:`bplane_coordinates` would reject it as bound.
+
+    That is not a limitation but the definition. The b-plane is where the
+    *undeflected* path pierces the plane, so for an already-undeflected
+    trajectory the impact parameter is just the perpendicular offset,
+
+        b_vec = r - (r . U_hat) U_hat,
+
+    which needs no gravitational parameter at all. ``mu_km3_s2`` is optional and
+    only fills in the periapsis the planet's gravity would actually produce.
+
+    The two functions agree: applied to a real trajectory far enough upstream
+    that the planet's pull has not yet bent it, this converges on the hyperbolic
+    result as ``mu / (v_inf^2 r)``.
+    """
+
+    position_km = _as_vector(position_km, "position_km")
+    velocity_kmps = _as_vector(velocity_kmps, "velocity_kmps")
+    u_hat = _unit(velocity_kmps, "velocity_kmps")
+
+    b_vector_km = position_km - float(np.dot(position_km, u_hat)) * u_hat
+    xi_hat, _, zeta_hat = bplane_frame(velocity_kmps, planet_velocity_kmps)
+    b_km = float(np.linalg.norm(b_vector_km))
+    v_infinity_kmps = float(np.linalg.norm(velocity_kmps))
+
+    periapsis_radius_km = (
+        float("nan")
+        if mu_km3_s2 is None
+        else periapsis_from_impact_parameter(b_km, v_infinity_kmps, float(mu_km3_s2))
+    )
+    return BPlaneCoordinates(
+        xi_km=float(np.dot(b_vector_km, xi_hat)),
+        zeta_km=float(np.dot(b_vector_km, zeta_hat)),
+        b_km=b_km,
+        v_infinity_kmps=v_infinity_kmps,
+        periapsis_radius_km=periapsis_radius_km,
+    )
+
+
 def impact_parameter_from_periapsis(
     periapsis_radius_km: float, v_infinity_kmps: float, mu_km3_s2: float
 ) -> float:

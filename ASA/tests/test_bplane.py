@@ -188,3 +188,51 @@ def test_bound_and_radial_states_are_rejected():
         hyperbolic_encounter([7000.0, 0.0, 0.0], [0.0, 7.5, 0.0], EARTH_MU)
     with pytest.raises(ValueError, match="radial"):
         hyperbolic_encounter([7000.0, 0.0, 0.0], [20.0, 0.0, 0.0], EARTH_MU)
+
+
+def test_unperturbed_converges_on_the_hyperbolic_result_upstream():
+    """The two constructions must agree where the planet has not yet bent the path.
+
+    Far upstream the real trajectory is still effectively straight, so the
+    straight-line impact parameter approaches the hyperbolic one with the same
+    mu / (v_inf^2 r) law that governs the asymptote itself.
+    """
+
+    from ..bplane import bplane_coordinates_unperturbed
+
+    position, velocity = _hyperbolic_state(9000.0, 7.5)
+    planet_velocity = np.array([0.0, 29.78, 0.0])
+    reference = bplane_coordinates(position, velocity, planet_velocity, EARTH_MU)
+
+    errors = []
+    for duration_s in (-4.0e6, -4.0e7):
+        solution = solve_ivp(
+            dynamics_2bp_cartesian,
+            (0.0, duration_s),
+            np.concatenate([position, velocity]),
+            args=(EARTH_MU,),
+            rtol=1e-12,
+            atol=1e-9,
+        )
+        far = solution.y[:, -1]
+        straight = bplane_coordinates_unperturbed(far[:3], far[3:], planet_velocity, EARTH_MU)
+        predicted = EARTH_MU / (reference.v_infinity_kmps**2 * np.linalg.norm(far[:3]))
+        observed = abs(straight.b_km - reference.b_km) / reference.b_km
+        assert observed == pytest.approx(predicted, rel=2e-2)
+        errors.append(observed)
+    assert errors[1] == pytest.approx(errors[0] / 10.0, rel=2e-2)
+
+
+def test_unperturbed_accepts_a_state_the_hyperbolic_form_must_reject():
+    """A gravity-free trajectory close in is bound, yet still has a b-plane."""
+
+    from ..bplane import bplane_coordinates_unperturbed
+
+    position = np.array([3000.0, 4000.0, 0.0])   # inside Earth, slow enough to be bound
+    velocity = np.array([0.0, 0.0, 8.0])
+    planet_velocity = np.array([0.0, 29.78, 0.0])
+    with pytest.raises(ValueError, match="hyperbolic"):
+        hyperbolic_encounter(position, velocity, EARTH_MU)
+    coordinates = bplane_coordinates_unperturbed(position, velocity, planet_velocity)
+    assert coordinates.b_km == pytest.approx(5000.0, rel=1e-12)  # offset perpendicular to +z
+    assert np.hypot(coordinates.xi_km, coordinates.zeta_km) == pytest.approx(5000.0, rel=1e-12)
