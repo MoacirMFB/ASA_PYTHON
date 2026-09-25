@@ -150,7 +150,19 @@ def make_env(
 
 
 def propagate_earth(env: Environment) -> tuple[FloatArray, FloatArray]:
-    """Propagate Earth's heliocentric two-body state history."""
+    """Build Earth's heliocentric state history over ``env.tspan``.
+
+    Only one of the two branches propagates anything. With ``env.ephemeris``
+    set, the history is read from the kernel: the states are sampled on the time
+    grid, carrying whatever perturbations the producing solution included, and
+    no dynamics are integrated. Without it, Earth is started from its mean
+    orbital elements and integrated under solar two-body dynamics, which is the
+    fallback for a run with no kernel loaded.
+
+    The distinction matters when the history is differenced against a small body
+    that was propagated a different way, because only the two-body branch shares
+    a force model with a two-body asteroid trajectory.
+    """
 
     if env.ephemeris is not None:
         t_earth = np.asarray(env.tspan, dtype=float).reshape(-1)
