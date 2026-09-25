@@ -236,3 +236,28 @@ def test_unperturbed_accepts_a_state_the_hyperbolic_form_must_reject():
     coordinates = bplane_coordinates_unperturbed(position, velocity, planet_velocity)
     assert coordinates.b_km == pytest.approx(5000.0, rel=1e-12)  # offset perpendicular to +z
     assert np.hypot(coordinates.xi_km, coordinates.zeta_km) == pytest.approx(5000.0, rel=1e-12)
+
+
+def test_zeta_clearance_spans_the_chord_at_that_xi_not_the_diameter():
+    """A zeta deflection crosses the circle at its own xi, off the centre line."""
+
+    from ..bplane import zeta_clearance
+
+    capture_km, xi_km, zeta_km = 10880.3, -249.1, 3988.8
+    northward, southward = zeta_clearance(xi_km, zeta_km, capture_km)
+    half_chord = np.sqrt(capture_km**2 - xi_km**2)
+    assert northward + southward == pytest.approx(2.0 * half_chord, rel=1e-12)
+    assert northward + southward < 2.0 * capture_km
+    # Moving by exactly the returned amount lands on the boundary.
+    for moved, direction in ((zeta_km + northward, "north"), (zeta_km - southward, "south")):
+        assert np.hypot(xi_km, moved) == pytest.approx(capture_km, rel=1e-12), direction
+    # On the centre line the two forms agree.
+    assert zeta_clearance(0.0, zeta_km, capture_km) == pytest.approx(
+        (capture_km - zeta_km, capture_km + zeta_km), rel=1e-12
+    )
+    # Overstating by using the radius costs xi^2 / (2 b_cap) to first order.
+    assert (capture_km - zeta_km) - northward == pytest.approx(
+        xi_km**2 / (2.0 * capture_km), rel=1e-3
+    )
+    with pytest.raises(ValueError, match="already clears"):
+        zeta_clearance(capture_km + 1.0, 0.0, capture_km)

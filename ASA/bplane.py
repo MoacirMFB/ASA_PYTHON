@@ -366,6 +366,39 @@ def capture_impact_parameter(
     return impact_parameter_from_periapsis(body_radius_km, v_infinity_kmps, mu_km3_s2)
 
 
+def zeta_clearance(
+    xi_km: float, zeta_km: float, capture_radius_km: float
+) -> tuple[float, float]:
+    """Deflections along zeta that carry a crossing out of the capture circle.
+
+    Returns the two positive magnitudes, ``(northward, southward)``, needed to
+    move a crossing at ``(xi, zeta)`` past the boundary of a circle of radius
+    ``capture_radius_km`` centred on the body.
+
+    A deflection acting in zeta slides the crossing along the line of constant
+    xi, and that line leaves the circle at ``sqrt(b_cap^2 - xi^2)``. Only the
+    line through the centre reaches the full radius, so using ``b_cap`` itself
+    overstates both requirements by ``xi^2 / (2 b_cap)`` to first order. The two
+    magnitudes therefore sum to the chord the circle cuts at that xi, not to its
+    diameter.
+
+    A crossing already outside the circle gives a negative northward or
+    southward value, which is the distance it has to spare in that direction.
+    """
+
+    capture_radius_km = float(capture_radius_km)
+    if capture_radius_km <= 0.0:
+        raise ValueError("capture_radius_km must be positive.")
+    xi_km = float(xi_km)
+    if abs(xi_km) >= capture_radius_km:
+        raise ValueError(
+            f"A crossing at xi = {xi_km:.3f} km already clears a capture radius of "
+            f"{capture_radius_km:.3f} km, so no deflection in zeta is required."
+        )
+    half_chord_km = float(np.sqrt(capture_radius_km**2 - xi_km**2))
+    return half_chord_km - float(zeta_km), half_chord_km + float(zeta_km)
+
+
 def sphere_of_influence_radius(
     mu_small_km3_s2: float, mu_large_km3_s2: float, separation_km: float
 ) -> float:
